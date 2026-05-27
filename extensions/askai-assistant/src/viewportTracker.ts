@@ -117,7 +117,8 @@ function _debounce<T extends (...args: any[]) => void>(fn: T, ms: number): T {
   }) as T;
 }
 
-const _pushToBackend = _debounce(async (state: ViewportState) => {
+// State-only channel — small JSON, fires ~per scroll
+const _pushStateCheap = _debounce(async (state: ViewportState) => {
   if (!state.imageId) return;
   const url = `${_resolveChainlitUrl()}/capture/state`;
   try {
@@ -125,18 +126,78 @@ const _pushToBackend = _debounce(async (state: ViewportState) => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        session_id: 'default', // single-user dev; per-session in M+1
+        session_id: 'default',
         imageId: state.imageId,
         viewportId: state.viewportId,
         voi: state.voi,
         slice: state.slice,
       }),
-      // No credentials yet — see app.py CORSMiddleware notes.
     });
   } catch (e) {
     console.warn(`[askai] /capture/state POST failed (is chainlit at ${url}?):`, e);
   }
 }, 200);
+
+// Screenshot channel — heavier payload (~200-500 KB), fires only after a render
+// settles. Both state and PNG go in the same POST so backend caches them atomically.
+let _screenshotPushCount = 0;
+const _pushScreenshotHeavy = _debounce(
+  async (state: ViewportState, pngDataUrl: string) => {
+    if (!state.imageId || !pngDataUrl) return;
+    // toDataURL returns "data:image/png;base64,<...>". Backend expects raw base64.
+    const b64 = pngDataUrl.includes(',') ? pngDataUrl.split(',', 2)[1] : pngDataUrl;
+    if (!b64 || b64.length < 100) {
+      console.warn(
+        `[askai] screenshot payload suspiciously small (${b64?.length || 0} chars). ` +
+          `WebGL preserveDrawingBuffer issue? Skipping push.`
+      );
+      return;
+    }
+    const url = `${_resolveChainlitUrl()}/capture/state`;
+    try {
+      await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          session_id: 'default',
+          imageId: state.imageId,
+          viewportId: state.viewportId,
+          voi: state.voi,
+          slice: state.slice,
+          png_b64: b64,
+        }),
+      });
+      _screenshotPushCount++;
+      if (_screenshotPushCount === 1 || _screenshotPushCount % 10 === 0) {
+        console.log(
+          `[askai] screenshot pushed (#${_screenshotPushCount}, ${Math.round(b64.length / 1024)} KB)`
+        );
+      }
+    } catch (e) {
+      console.warn(`[askai] heavy /capture/state POST failed:`, e);
+    }
+  },
+  500
+);
+
+/**
+ * Synchronously capture the viewport canvas as a PNG data URL. MUST be called
+ * inside the IMAGE_RENDERED event handler — that's the only moment when the
+ * WebGL drawing buffer is guaranteed to be alive. Outside that handler the
+ * buffer is swapped and toDataURL would return a blank PNG (unless the
+ * rendering engine was created with preserveDrawingBuffer: true).
+ */
+function _capturePng(vp: any): string | null {
+  try {
+    const canvas: HTMLCanvasElement | undefined =
+      typeof vp?.getCanvas === 'function' ? vp.getCanvas() : null;
+    if (!canvas) return null;
+    return canvas.toDataURL('image/png');
+  } catch (e) {
+    console.warn('[askai] _capturePng failed:', e);
+    return null;
+  }
+}
 
 let _started = false;
 
@@ -170,7 +231,17 @@ export function startViewportTracker() {
     }
     const state = _extractState(vp);
     _emit(state);
-    _pushToBackend(state);
+
+    // Cheap channel — always send state on every event.
+    _pushStateCheap(state);
+
+    // Heavy channel — only safe to capture PNG inside IMAGE_RENDERED (WebGL
+    // buffer is preserved at this microtask). Other events fire before the
+    // render swaps buffers, so toDataURL there would return blank pixels.
+    if (eventName === 'IMAGE_RENDERED') {
+      const pngDataUrl = _capturePng(vp);
+      if (pngDataUrl) _pushScreenshotHeavy(state, pngDataUrl);
+    }
   };
 
   const attachToElement = (element: Element) => {
