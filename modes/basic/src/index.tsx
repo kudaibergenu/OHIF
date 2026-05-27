@@ -249,6 +249,8 @@ export const toolbarSections = {
   MeasurementTools: [
     'Length',
     'Bidirectional',
+    'Angle',
+    'CobbAngle',
     'ArrowAnnotate',
     'EllipticalROI',
     'RectangleROI',
@@ -269,8 +271,6 @@ export const toolbarSections = {
     'invert',
     'Probe',
     'Cine',
-    'Angle',
-    'CobbAngle',
     'Magnify',
     'CalibrationLine',
     'TagBrowser',
