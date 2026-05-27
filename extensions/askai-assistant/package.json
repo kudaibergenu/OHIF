@@ -1,0 +1,17 @@
+{
+  "name": "@ohif/extension-askai-assistant",
+  "version": "0.0.1",
+  "description": "askaihealth AI Assistant panel — hosts the Chainlit chat inside OHIF",
+  "author": "askaihealth",
+  "license": "MIT",
+  "main": "src/index.tsx",
+  "module": "src/index.tsx",
+  "engines": {
+    "node": ">=14",
+    "yarn": ">=1.16.0"
+  },
+  "peerDependencies": {
+    "@ohif/core": "3.13.0-beta.83",
+    "react": "18.3.1"
+  }
+}

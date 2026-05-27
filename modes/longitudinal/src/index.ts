@@ -17,10 +17,15 @@ export const tracked = {
   viewport: '@ohif/extension-measurement-tracking.viewportModule.cornerstone-tracked',
 };
 
+export const askai = {
+  aiAssistant: '@ohif/extension-askai-assistant.panelModule.aiAssistant',
+};
+
 export const extensionDependencies = {
   // Can derive the versions at least process.env.from npm_package_version
   ...basicDependencies,
   '@ohif/extension-measurement-tracking': '^3.0.0',
+  '@ohif/extension-askai-assistant': '^0.0.1',
 };
 
 export const longitudinalInstance = {
@@ -29,7 +34,7 @@ export const longitudinalInstance = {
   props: {
     ...basicLayout.props,
     leftPanels: [tracked.thumbnailList],
-    rightPanels: [cornerstone.segmentation, tracked.measurements],
+    rightPanels: [cornerstone.segmentation, tracked.measurements, askai.aiAssistant],
     viewports: [
       {
         namespace: tracked.viewport,

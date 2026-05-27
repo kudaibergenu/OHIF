@@ -107,3 +107,43 @@ window.config = {
     console.warn(`HTTP Error Handler (status: ${error.status})`, error);
   },
 };
+
+// ─── askaihealth: inject the Chainlit Copilot widget ───────────────────────
+//
+// Mounts the same floating chat bubble that lives in public/viewer.html today,
+// but now floats on top of OHIF — visible across all routes (study list AND
+// viewer), in every mode, no panel toggling required.
+//
+// This block runs in the browser at OHIF startup. It is pure config — no OHIF
+// source code is touched. Upstream OHIF upgrades are append-only here.
+//
+// Override the Chainlit URL at runtime (browser console):
+//   localStorage.setItem('askai.chainlitUrl', 'https://my-chainlit.fly.dev')
+// then reload.
+(function injectChainlitCopilot() {
+  const DEFAULT_URL = 'http://localhost:8000'; // `chainlit run app.py -w` default
+  const url = (window.localStorage?.getItem('askai.chainlitUrl') || DEFAULT_URL).replace(/\/$/, '');
+
+  const s = document.createElement('script');
+  s.src = `${url}/copilot/index.js`;
+  s.async = true;
+  s.onload = () => {
+    if (typeof window.mountChainlitWidget !== 'function') {
+      console.warn('[askai] mountChainlitWidget not defined after script load');
+      return;
+    }
+    try {
+      window.mountChainlitWidget({ chainlitServer: url });
+      console.log(`[askai] Chainlit Copilot mounted (server: ${url})`);
+    } catch (e) {
+      console.warn('[askai] mountChainlitWidget failed:', e);
+    }
+  };
+  s.onerror = () => {
+    console.warn(
+      `[askai] Could not load Chainlit Copilot from ${url}. ` +
+      `Is your Chainlit server running? (try: chainlit run app.py -w --port 8000)`
+    );
+  };
+  document.head.appendChild(s);
+})();
