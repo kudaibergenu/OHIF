@@ -1,9 +1,9 @@
 import { Types } from '@ohif/core';
 
 import { id } from './id';
-import AiAssistantPanel from './AiAssistantPanel';
 import { startViewportTracker } from './viewportTracker';
 import { startActionPoller } from './actionPoller';
+import { setManagers } from './managers';
 
 const askaiAssistantExtension: Types.Extensions.Extension = {
   id,
@@ -15,21 +15,16 @@ const askaiAssistantExtension: Types.Extensions.Extension = {
    *   • actionPoller    → polls /capture/actions and dispatches agent-issued
    *                       actions (e.g. draw a Length annotation) back into
    *                       the viewer.
+   *
+   * OHIF passes the ExtensionParams here; we capture commandsManager /
+   * servicesManager so the action poller can drive the viewer via OHIF
+   * commands (window/level, scroll, transforms).
    */
-  preRegistration: () => {
+  preRegistration: (props: any) => {
+    setManagers(props);
     startViewportTracker();
     startActionPoller();
   },
-
-  getPanelModule: () => [
-    {
-      name: 'aiAssistant',
-      iconName: 'tab-radar',
-      iconLabel: 'AI',
-      label: 'AI Assistant',
-      component: AiAssistantPanel,
-    },
-  ],
 };
 
 export default askaiAssistantExtension;

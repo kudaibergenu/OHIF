@@ -4,29 +4,37 @@
  * The agent enqueues actions on the Python side (PENDING_ACTIONS in app.py);
  * we poll GET /capture/actions on a short interval and dispatch each action.
  *
- * v1 supports one action type:
- *   { type: "draw_annotation", toolName: "Length", viewportId,
- *     points_canvas_normalized: [[u1,v1],[u2,v2]], label, annotationUID }
+ * The draw_annotation action supports several measurement tools:
+ *   { type: "draw_annotation", toolName: "Length"|"Angle"|"CobbAngle"|
+ *     "PlanarFreehandROI", viewportId, points_canvas_normalized: [[u,v],...],
+ *     label, annotationUID, closed? }
  *
  * Normalized canvas coords (0..1, origin top-left) are converted to world
  * coords here via viewport.canvasToWorld() — keeping DICOM-geometry math out
- * of the Python side. The annotation is constructed manually (cachedStats: {}
- * pre-initialized) and inserted via annotation.state.addAnnotation(); the
- * MeasurementService listener surfaces it in the panel automatically (see
- * initMeasurementService.ts).
+ * of the Python side. Handle-based tools (Length/Angle/CobbAngle) are built
+ * manually with cachedStats:{} and inserted via annotation.state.addAnnotation();
+ * the contour tool (PlanarFreehandROI) is populated via the official
+ * updateContourPolyline helper. The MeasurementService listener surfaces every
+ * one in the panel automatically (see initMeasurementService.ts).
  */
 import { getEnabledElementByViewportId } from '@cornerstonejs/core';
-import { annotation as csAnnotation } from '@cornerstonejs/tools';
+import { annotation as csAnnotation, utilities as csToolsUtilities } from '@cornerstonejs/tools';
+import { getCommandsManager, getActiveViewportId } from './managers';
 
 const POLL_INTERVAL_MS = 500;
 
+type DrawToolName = 'Length' | 'Angle' | 'CobbAngle' | 'PlanarFreehandROI';
+
 type DrawAnnotationAction = {
   type: 'draw_annotation';
-  toolName: 'Length';
+  toolName: DrawToolName;
   viewportId: string;
   points_canvas_normalized: [number, number][];
   label?: string;
   annotationUID?: string;
+  // PlanarFreehandROI only: the points trace a closed contour rather than
+  // defining handle points. Defaults to closed when omitted.
+  closed?: boolean;
   // Set when the points were derived from a specific slice's screenshot. If the
   // viewport has scrolled to a different image by the time we draw, the
   // normalized coords no longer map to the right anatomy — skip rather than
@@ -34,7 +42,38 @@ type DrawAnnotationAction = {
   expected_imageId?: string;
 };
 
-type Action = DrawAnnotationAction;
+// Viewer-control actions produced by the backend's set_window_level /
+// navigate_slices / transform_viewport tools. Each maps to an OHIF
+// commandsManager command (see the handlers below). viewportId is optional —
+// we fall back to the active viewport when the agent didn't specify one.
+type SetWindowLevelAction = {
+  type: 'set_window_level';
+  viewportId?: string;
+  windowWidth?: number;
+  windowCenter?: number;
+  presetName?: string;
+};
+
+type NavigateSliceAction = {
+  type: 'navigate_slice';
+  viewportId?: string;
+  imageIndex?: number;
+  delta?: number;
+  position?: 'first' | 'last';
+};
+
+type TransformViewportAction = {
+  type: 'transform_viewport';
+  viewportId?: string;
+  operation: string;
+  value?: number;
+};
+
+type Action =
+  | DrawAnnotationAction
+  | SetWindowLevelAction
+  | NavigateSliceAction
+  | TransformViewportAction;
 
 function _resolveChainlitUrl(): string {
   const fromLS =
@@ -83,11 +122,173 @@ export function startActionPoller() {
 }
 
 function dispatch(action: Action) {
-  if (action.type === 'draw_annotation') {
-    drawAnnotation(action);
+  switch (action.type) {
+    case 'draw_annotation':
+      drawAnnotation(action);
+      return;
+    case 'set_window_level':
+      setWindowLevel(action);
+      return;
+    case 'navigate_slice':
+      navigateSlice(action);
+      return;
+    case 'transform_viewport':
+      transformViewport(action);
+      return;
+    default:
+      console.warn('[askai] unknown action type:', (action as any).type);
+  }
+}
+
+// commandsManager is captured in preRegistration (index.tsx → managers.ts). It
+// can be null if an action somehow arrives before the extension registered.
+function _commands(): any | null {
+  const cm = getCommandsManager();
+  if (!cm) {
+    console.warn('[askai] commandsManager unavailable — was preRegistration run?');
+  }
+  return cm;
+}
+
+function setWindowLevel(action: SetWindowLevelAction) {
+  const cm = _commands();
+  if (!cm) return;
+  const viewportId = action.viewportId || getActiveViewportId();
+  if (action.presetName) {
+    cm.runCommand('setWindowLevelPreset', { presetName: action.presetName });
+  } else if (
+    typeof action.windowWidth === 'number' &&
+    typeof action.windowCenter === 'number'
+  ) {
+    cm.runCommand('setViewportWindowLevel', {
+      viewportId,
+      windowWidth: action.windowWidth,
+      windowCenter: action.windowCenter,
+    });
+  } else {
+    console.warn('[askai] set_window_level: need presetName or window+level', action);
+  }
+}
+
+function _currentSliceIndex(vp: any): number | null {
+  if (!vp) return null;
+  if (typeof vp.getCurrentImageIdIndex === 'function') return vp.getCurrentImageIdIndex(); // stack
+  if (typeof vp.getSliceIndex === 'function') return vp.getSliceIndex(); // volume
+  return null;
+}
+
+function _sliceCount(vp: any): number | null {
+  if (!vp) return null;
+  try {
+    const ids = typeof vp.getImageIds === 'function' ? vp.getImageIds() : null;
+    if (ids?.length) return ids.length;
+  } catch {
+    /* ignore */
+  }
+  if (typeof vp.getNumberOfSlices === 'function') {
+    try {
+      return vp.getNumberOfSlices();
+    } catch {
+      /* ignore */
+    }
+  }
+  return null;
+}
+
+function navigateSlice(action: NavigateSliceAction) {
+  const cm = _commands();
+  if (!cm) return;
+
+  // Resolve everything to an ABSOLUTE index and drive jumpToImage with an
+  // explicit viewport. The relative `scroll` command silently fails to move the
+  // stack here (csUtils.scroll with our options no-ops), and the runCommand
+  // fallbacks target only the ACTIVE viewport — unreliable while the user is
+  // focused on the chat. Resolving the viewport by id + jumpToImage is proven
+  // to move the slice.
+  const viewportId = action.viewportId || getActiveViewportId();
+  const enabled = viewportId ? getEnabledElementByViewportId(viewportId) : null;
+  const vp: any = enabled?.viewport;
+
+  let target: number | null = null;
+  if (typeof action.imageIndex === 'number') {
+    target = action.imageIndex;
+  } else if (action.position === 'first') {
+    target = 0;
+  } else if (action.position === 'last') {
+    target = -1; // jumpToImage maps a negative index to (count + index)
+  } else if (typeof action.delta === 'number') {
+    const cur = _currentSliceIndex(vp);
+    if (cur == null) {
+      console.warn('[askai] navigate_slice: cannot read current slice index', action);
+      return;
+    }
+    const total = _sliceCount(vp);
+    target = cur + action.delta;
+    target = total != null ? Math.max(0, Math.min(total - 1, target)) : Math.max(0, target);
+  } else {
+    console.warn('[askai] navigate_slice: nothing to do', action);
     return;
   }
-  console.warn('[askai] unknown action type:', (action as any).type);
+
+  const args: any = { imageIndex: target };
+  if (viewportId) args.viewport = { id: viewportId };
+  try {
+    cm.runCommand('jumpToImage', args);
+  } catch (e) {
+    console.warn('[askai] navigate_slice: jumpToImage failed', args, e);
+  }
+}
+
+function transformViewport(action: TransformViewportAction) {
+  const cm = _commands();
+  if (!cm) return;
+  const viewportId = action.viewportId || getActiveViewportId();
+  switch (action.operation) {
+    case 'rotate':
+      cm.runCommand('rotateViewportBy', { rotation: action.value ?? 90, viewportId });
+      return;
+    case 'flip_horizontal':
+      cm.runCommand('flipViewportHorizontal', { viewportId, newValue: 'toggle' });
+      return;
+    case 'flip_vertical':
+      cm.runCommand('flipViewportVertical', { viewportId, newValue: 'toggle' });
+      return;
+    case 'invert':
+      cm.runCommand('invertViewport', {});
+      return;
+    case 'zoom_in':
+      cm.runCommand('scaleUpViewport', {});
+      return;
+    case 'zoom_out':
+      cm.runCommand('scaleDownViewport', {});
+      return;
+    case 'fit':
+      cm.runCommand('fitViewportToWindow', {});
+      return;
+    case 'reset':
+      cm.runCommand('resetViewport', {});
+      return;
+    default:
+      console.warn('[askai] transform_viewport: unknown operation', action.operation);
+  }
+}
+
+// Length (2 pts), Angle (3 pts, middle = vertex) and CobbAngle (4 pts = two
+// lines) all store geometry as world handle points; only the toolName and point
+// count differ. PlanarFreehandROI is the exception — it uses a closed contour.
+const HANDLES_TOOLS = new Set<DrawToolName>(['Length', 'Angle', 'CobbAngle']);
+
+function _textBoxScaffold() {
+  return {
+    hasMoved: false,
+    worldPosition: [0, 0, 0],
+    worldBoundingBox: {
+      topLeft: [0, 0, 0],
+      topRight: [0, 0, 0],
+      bottomLeft: [0, 0, 0],
+      bottomRight: [0, 0, 0],
+    },
+  };
 }
 
 function drawAnnotation(action: DrawAnnotationAction) {
@@ -130,25 +331,30 @@ function drawAnnotation(action: DrawAnnotationAction) {
   const dpr = window.devicePixelRatio || 1;
   const cssW = canvas.width / dpr;
   const cssH = canvas.height / dpr;
-  const worldPoints = action.points_canvas_normalized.map(([u, v]) => {
-    return vp.canvasToWorld([u * cssW, v * cssH]);
-  });
+  const canvasPoints = action.points_canvas_normalized.map(
+    ([u, v]) => [u * cssW, v * cssH] as [number, number]
+  );
+  const worldPoints = canvasPoints.map(p => vp.canvasToWorld(p));
 
-  if (action.toolName === 'Length') {
-    try {
-      // Construct the annotation manually rather than calling
-      // LengthTool.hydrate(): hydrate omits `data.cachedStats`, but the render
-      // path indexes into `data.cachedStats[targetId]` without a guard, so a
-      // hydrate-created annotation throws on first render. The DICOM-SR
-      // hydration path uses this same manual pattern (see addSRAnnotation.ts).
-      const FrameOfReferenceUID =
-        typeof vp.getFrameOfReferenceUID === 'function'
-          ? vp.getFrameOfReferenceUID()
-          : undefined;
-      const camera = typeof vp.getCamera === 'function' ? vp.getCamera() : null;
-      const referencedImageId =
-        typeof vp.getCurrentImageId === 'function' ? vp.getCurrentImageId() : undefined;
+  const camera = typeof vp.getCamera === 'function' ? vp.getCamera() : null;
+  const metadata = {
+    toolName: action.toolName,
+    viewPlaneNormal: camera?.viewPlaneNormal,
+    viewUp: camera?.viewUp,
+    FrameOfReferenceUID:
+      typeof vp.getFrameOfReferenceUID === 'function' ? vp.getFrameOfReferenceUID() : undefined,
+    referencedImageId:
+      typeof vp.getCurrentImageId === 'function' ? vp.getCurrentImageId() : undefined,
+  };
 
+  try {
+    if (HANDLES_TOOLS.has(action.toolName)) {
+      // Construct the annotation manually rather than calling Tool.hydrate():
+      // hydrate omits `data.cachedStats`, but the render path indexes into
+      // `data.cachedStats[targetId]` without a guard, so a hydrate-created
+      // annotation throws on first render. The DICOM-SR hydration path uses this
+      // same manual pattern (see addSRAnnotation.ts). The tool's
+      // _calculateCachedStats fills the value (mm / degrees) on first render.
       const ann = {
         annotationUID: action.annotationUID,
         highlighted: false,
@@ -156,78 +362,153 @@ function drawAnnotation(action: DrawAnnotationAction) {
         isVisible: true,
         invalidated: true,
         autoGenerated: true,
-        metadata: {
-          toolName: 'Length',
-          viewPlaneNormal: camera?.viewPlaneNormal,
-          viewUp: camera?.viewUp,
-          FrameOfReferenceUID,
-          referencedImageId,
-        },
+        metadata,
         data: {
           handles: {
             points: worldPoints,
             activeHandleIndex: null,
-            textBox: {
-              hasMoved: false,
-              worldPosition: [0, 0, 0],
-              worldBoundingBox: {
-                topLeft: [0, 0, 0],
-                topRight: [0, 0, 0],
-                bottomLeft: [0, 0, 0],
-                bottomRight: [0, 0, 0],
-              },
-            },
+            textBox: _textBoxScaffold(),
           },
           label: action.label,
           cachedStats: {},
         },
       };
       csAnnotation.state.addAnnotation(ann as any, vp.element);
-      // Force a render so LengthTool._calculateCachedStats runs and fills mm.
       if (typeof vp.render === 'function') vp.render();
-
-      // Report the geometry back so the backend can convert to mm. We send the
-      // endpoints in image-grid INDEX space (via worldToIndex) — only the
-      // viewport knows the zoom/pan transform, and the backend pairs these with
-      // PixelSpacing from the DICOM (which the viewer didn't surface here).
-      reportMeasurement(vp, ann.annotationUID, worldPoints);
-    } catch (e) {
-      console.warn('[askai] draw_annotation (Length) failed:', e);
+      reportMeasurement(vp, ann.annotationUID, action.toolName, worldPoints);
+      return;
     }
-    return;
-  }
 
-  console.warn(`[askai] draw_annotation: tool "${action.toolName}" not handled yet`);
+    if (action.toolName === 'PlanarFreehandROI') {
+      // Contour tools store geometry in data.contour.polyline (world) + closed,
+      // not handle points. Build the skeleton, add it, then let the official
+      // updateContourPolyline helper populate the polyline from canvas points
+      // (it converts to world and sets the winding direction). Area / perimeter
+      // are filled into cachedStats on first render.
+      const ann: any = {
+        annotationUID: action.annotationUID,
+        highlighted: false,
+        isLocked: false,
+        isVisible: true,
+        invalidated: true,
+        autoGenerated: true,
+        metadata,
+        data: {
+          handles: { points: [], activeHandleIndex: null, textBox: _textBoxScaffold() },
+          contour: { polyline: [], closed: false },
+          label: action.label,
+          cachedStats: {},
+        },
+      };
+      csAnnotation.state.addAnnotation(ann, vp.element);
+      csToolsUtilities.contours.updateContourPolyline(
+        ann,
+        { points: canvasPoints, closed: action.closed !== false },
+        {
+          canvasToWorld: (p: any) => vp.canvasToWorld(p),
+          worldToCanvas: (p: any) => vp.worldToCanvas(p),
+        },
+        { updateWindingDirection: true }
+      );
+      if (typeof vp.render === 'function') vp.render();
+      reportMeasurement(vp, ann.annotationUID, action.toolName, ann.data.contour.polyline);
+      return;
+    }
+
+    console.warn(`[askai] draw_annotation: tool "${action.toolName}" not handled yet`);
+  } catch (e) {
+    console.warn(`[askai] draw_annotation (${action.toolName}) failed:`, e);
+  }
 }
 
-function reportMeasurement(vp: any, annotationUID: string, worldPoints: any[]) {
+// Read the first target's cachedStats off a (possibly just-rendered) annotation.
+function _firstCachedStats(ann: any): any | null {
+  const cs = ann?.data?.cachedStats;
+  if (!cs) return null;
+  const keys = Object.keys(cs);
+  return keys.length ? cs[keys[0]] : null;
+}
+
+// Report the drawn annotation's geometry + value back to the backend. Index
+// points (via worldToIndex) let the backend pair with PixelSpacing; the value
+// itself (mm / degrees / area) is whatever the viewer computed, so we read it
+// from cachedStats — which is filled during the annotation render and can lag a
+// frame behind addAnnotation, hence the short poll.
+function reportMeasurement(
+  vp: any,
+  annotationUID: string,
+  toolName: DrawToolName,
+  worldPoints: any[]
+) {
+  let indexPoints: number[][] = [];
+  let lengthPx: number | undefined;
+  let imgData: any = null;
   try {
-    const imgData = typeof vp.getImageData === 'function' ? vp.getImageData() : null;
+    imgData = typeof vp.getImageData === 'function' ? vp.getImageData() : null;
     const vtkImage = imgData?.imageData;
-    if (!vtkImage || typeof vtkImage.worldToIndex !== 'function') return;
+    if (vtkImage && typeof vtkImage.worldToIndex === 'function' && worldPoints?.length) {
+      indexPoints = worldPoints.map(w => Array.from(vtkImage.worldToIndex(w)) as number[]);
+      if (toolName === 'Length' && indexPoints.length >= 2) {
+        const [i1, j1] = indexPoints[0];
+        const [i2, j2] = indexPoints[1];
+        lengthPx = Math.hypot(i2 - i1, j2 - j1);
+      }
+    }
+  } catch (e) {
+    console.warn('[askai] reportMeasurement geometry failed:', e);
+  }
 
-    const indexPoints = worldPoints.map(w => Array.from(vtkImage.worldToIndex(w)));
-    // index-grid length (px) — what the viewer's panel shows when uncalibrated
-    const [i1, j1] = indexPoints[0];
-    const [i2, j2] = indexPoints[1];
-    const lengthPx = Math.hypot(i2 - i1, j2 - j1);
+  const wantsStat = toolName !== 'Length';
+  let tries = 0;
+  const attempt = () => {
+    tries++;
+    const ann = csAnnotation.state.getAnnotation(annotationUID);
+    const stats = _firstCachedStats(ann);
+    const haveValue = stats && (typeof stats.angle === 'number' || typeof stats.area === 'number');
+    if (wantsStat && !haveValue && tries < 8) {
+      setTimeout(attempt, 150);
+      return;
+    }
+    postMeasurement(annotationUID, toolName, indexPoints, lengthPx, stats, imgData);
+  };
+  attempt();
+}
 
+function postMeasurement(
+  annotationUID: string,
+  toolName: DrawToolName,
+  indexPoints: number[][],
+  lengthPx: number | undefined,
+  stats: any | null,
+  imgData: any
+) {
+  try {
+    const body: any = {
+      annotationUID,
+      toolName,
+      indexPoints,
+      dimensions: imgData?.dimensions,
+      spacing: imgData?.spacing,
+    };
+    if (typeof lengthPx === 'number') body.lengthPx = lengthPx;
+    if (stats) {
+      if (typeof stats.angle === 'number') body.angleDeg = stats.angle;
+      if (typeof stats.area === 'number') {
+        body.area = stats.area;
+        body.areaUnit = stats.areaUnit || stats.unit;
+      }
+      if (typeof stats.perimeter === 'number') body.perimeter = stats.perimeter;
+    }
     const url = `${_resolveChainlitUrl()}/capture/measurement_result`;
     fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        annotationUID,
-        indexPoints,
-        lengthPx,
-        dimensions: imgData?.dimensions,
-        spacing: imgData?.spacing,
-      }),
+      body: JSON.stringify(body),
     }).catch(() => {
       /* backend may be down between polls; the tool will time out gracefully */
     });
   } catch (e) {
-    console.warn('[askai] reportMeasurement failed:', e);
+    console.warn('[askai] postMeasurement failed:', e);
   }
 }
 
