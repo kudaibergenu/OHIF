@@ -9,6 +9,7 @@
  *      can render the current state without re-fetching.
  */
 import { eventTarget, Enums as CSEnums, getEnabledElement } from '@cornerstonejs/core';
+import { Enums as CSToolsEnums } from '@cornerstonejs/tools';
 
 export type ViewportState = {
   imageId: string | null;
@@ -142,6 +143,12 @@ const _pushStateCheap = _debounce(async (state: ViewportState) => {
 // settles. Both state and PNG go in the same POST so backend caches them
 // atomically. Two PNGs travel together: png_b64 (clean, raw canvas) and, when
 // any annotation is drawn, png_annotated_b64 (clean + .svg-layer composited).
+// Last CLEAN capture per viewport element, recorded inside IMAGE_RENDERED.
+// Annotation-change events reuse it to re-composite + re-push the annotated
+// frame without a fresh WebGL capture: the SVG overlay persists in the DOM, so
+// we only need the clean raster + the (now-updated) overlay.
+const _lastClean = new Map<Element, { state: ViewportState; pngDataUrl: string }>();
+
 let _screenshotPushCount = 0;
 const _pushScreenshotHeavy = _debounce(
   async (state: ViewportState, pngDataUrl: string, element: any) => {
@@ -332,7 +339,10 @@ export function startViewportTracker() {
     // render swaps buffers, so toDataURL there would return blank pixels.
     if (eventName === 'IMAGE_RENDERED') {
       const pngDataUrl = _capturePng(vp);
-      if (pngDataUrl) _pushScreenshotHeavy(state, pngDataUrl, vp.element);
+      if (pngDataUrl) {
+        _lastClean.set(vp.element, { state, pngDataUrl });
+        _pushScreenshotHeavy(state, pngDataUrl, vp.element);
+      }
     }
   };
 
@@ -354,6 +364,24 @@ export function startViewportTracker() {
     const element = evt?.detail?.element;
     if (element) attachToElement(element);
   });
+
+  // Measurements/annotations fire ANNOTATION_* events (on the global target),
+  // NOT IMAGE_RENDERED — so without this a freshly drawn/edited measurement
+  // would never reach /capture/state until the next image render. Re-composite
+  // the now-updated overlay onto the last clean capture and re-push it. The
+  // 500ms debounce in _pushScreenshotHeavy coalesces rapid drag events.
+  const onAnnotationChange = () => {
+    for (const [element, stored] of _lastClean) {
+      _pushScreenshotHeavy(stored.state, stored.pngDataUrl, element);
+    }
+  };
+  for (const ev of [
+    CSToolsEnums.Events.ANNOTATION_COMPLETED,
+    CSToolsEnums.Events.ANNOTATION_MODIFIED,
+    CSToolsEnums.Events.ANNOTATION_REMOVED,
+  ]) {
+    eventTarget.addEventListener(ev, onAnnotationChange);
+  }
 
   // Catch any elements that were already enabled before our subscription ran:
   // walk OHIF's typical viewport container and attach to any cornerstone canvases.

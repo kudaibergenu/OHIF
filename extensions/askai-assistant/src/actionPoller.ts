@@ -458,14 +458,20 @@ function reportMeasurement(
     console.warn('[askai] reportMeasurement geometry failed:', e);
   }
 
-  const wantsStat = toolName !== 'Length';
+  // Every tool now carries its value in cachedStats — Length stores
+  // {length, unit} (mm when the image is calibrated), filled on first render,
+  // so wait for it like we do for angle/area rather than posting immediately.
   let tries = 0;
   const attempt = () => {
     tries++;
     const ann = csAnnotation.state.getAnnotation(annotationUID);
     const stats = _firstCachedStats(ann);
-    const haveValue = stats && (typeof stats.angle === 'number' || typeof stats.area === 'number');
-    if (wantsStat && !haveValue && tries < 8) {
+    const haveValue =
+      stats &&
+      (typeof stats.angle === 'number' ||
+        typeof stats.area === 'number' ||
+        typeof stats.length === 'number');
+    if (!haveValue && tries < 8) {
       setTimeout(attempt, 150);
       return;
     }
@@ -492,6 +498,13 @@ function postMeasurement(
     };
     if (typeof lengthPx === 'number') body.lengthPx = lengthPx;
     if (stats) {
+      // OHIF's own Length value (the number drawn on the image / shown in the
+      // panel). unit is "mm" when the image has pixel spacing, else "px". This
+      // is the source of truth — the backend prefers it over the raw lengthPx.
+      if (typeof stats.length === 'number') {
+        body.lengthValue = stats.length;
+        body.lengthUnit = stats.unit;
+      }
       if (typeof stats.angle === 'number') body.angleDeg = stats.angle;
       if (typeof stats.area === 'number') {
         body.area = stats.area;
