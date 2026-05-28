@@ -133,7 +133,7 @@ window.config = {
       return;
     }
     try {
-      window.mountChainlitWidget({ chainlitServer: url });
+      window.mountChainlitWidget({ chainlitServer: url, opened: true });
       console.log(`[askai] Chainlit Copilot mounted (server: ${url})`);
     } catch (e) {
       console.warn('[askai] mountChainlitWidget failed:', e);
