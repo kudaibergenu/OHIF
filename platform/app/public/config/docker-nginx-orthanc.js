@@ -106,6 +106,34 @@ window.config = {
   httpErrorHandler: error => {
     console.warn(`HTTP Error Handler (status: ${error.status})`, error);
   },
+  // askaihealth: replace the default OHIF logo in the header / study list with
+  // our own brand mark. Pure config — no OHIF source is touched.
+  whiteLabeling: {
+    createLogoComponentFn: function (React) {
+      return React.createElement(
+        'div',
+        { style: { display: 'flex', alignItems: 'center', gap: '8px' } },
+        React.createElement('img', {
+          src: './askai-logo.png',
+          alt: 'SaigaLab',
+          style: { height: '40px', width: 'auto' },
+        }),
+        React.createElement(
+          'span',
+          {
+            style: {
+              color: '#fff',
+              fontSize: '18px',
+              fontWeight: 600,
+              letterSpacing: '0.01em',
+              whiteSpace: 'nowrap',
+            },
+          },
+          'SaigaLab'
+        )
+      );
+    },
+  },
 };
 
 // ─── askaihealth: inject the Chainlit Copilot widget ───────────────────────
