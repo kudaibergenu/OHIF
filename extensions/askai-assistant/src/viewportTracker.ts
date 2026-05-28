@@ -139,13 +139,15 @@ const _pushStateCheap = _debounce(async (state: ViewportState) => {
 }, 200);
 
 // Screenshot channel — heavier payload (~200-500 KB), fires only after a render
-// settles. Both state and PNG go in the same POST so backend caches them atomically.
+// settles. Both state and PNG go in the same POST so backend caches them
+// atomically. Two PNGs travel together: png_b64 (clean, raw canvas) and, when
+// any annotation is drawn, png_annotated_b64 (clean + .svg-layer composited).
 let _screenshotPushCount = 0;
 const _pushScreenshotHeavy = _debounce(
-  async (state: ViewportState, pngDataUrl: string) => {
+  async (state: ViewportState, pngDataUrl: string, element: any) => {
     if (!state.imageId || !pngDataUrl) return;
     // toDataURL returns "data:image/png;base64,<...>". Backend expects raw base64.
-    const b64 = pngDataUrl.includes(',') ? pngDataUrl.split(',', 2)[1] : pngDataUrl;
+    const b64 = _stripDataUrl(pngDataUrl);
     if (!b64 || b64.length < 100) {
       console.warn(
         `[askai] screenshot payload suspiciously small (${b64?.length || 0} chars). ` +
@@ -153,24 +155,37 @@ const _pushScreenshotHeavy = _debounce(
       );
       return;
     }
+
+    // Layer the annotation overlay on top for the "with annotations" variant.
+    // Null when nothing is drawn — then the backend only caches the clean PNG.
+    let annotatedB64: string | null = null;
+    const annotatedDataUrl = await _compositeAnnotated(element, pngDataUrl);
+    if (annotatedDataUrl) {
+      const a = _stripDataUrl(annotatedDataUrl);
+      if (a && a.length >= 100) annotatedB64 = a;
+    }
+
     const url = `${_resolveChainlitUrl()}/capture/state`;
     try {
+      const body: Record<string, unknown> = {
+        session_id: 'default',
+        imageId: state.imageId,
+        viewportId: state.viewportId,
+        voi: state.voi,
+        slice: state.slice,
+        png_b64: b64,
+      };
+      if (annotatedB64) body.png_annotated_b64 = annotatedB64;
       await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          session_id: 'default',
-          imageId: state.imageId,
-          viewportId: state.viewportId,
-          voi: state.voi,
-          slice: state.slice,
-          png_b64: b64,
-        }),
+        body: JSON.stringify(body),
       });
       _screenshotPushCount++;
       if (_screenshotPushCount === 1 || _screenshotPushCount % 10 === 0) {
         console.log(
-          `[askai] screenshot pushed (#${_screenshotPushCount}, ${Math.round(b64.length / 1024)} KB)`
+          `[askai] screenshot pushed (#${_screenshotPushCount}, ${Math.round(b64.length / 1024)} KB` +
+            `${annotatedB64 ? ` + ${Math.round(annotatedB64.length / 1024)} KB annotated` : ''})`
         );
       }
     } catch (e) {
@@ -186,6 +201,11 @@ const _pushScreenshotHeavy = _debounce(
  * WebGL drawing buffer is guaranteed to be alive. Outside that handler the
  * buffer is swapped and toDataURL would return a blank PNG (unless the
  * rendering engine was created with preserveDrawingBuffer: true).
+ *
+ * This captures ONLY the WebGL canvas, i.e. the raw image. Cornerstone3D draws
+ * measurements/annotations onto a separate `.svg-layer` overlay, NOT onto this
+ * canvas — so the result is the CLEAN slice. _compositeAnnotated() layers the
+ * overlay back on for the "with annotations" variant.
  */
 function _capturePng(vp: any): string | null {
   try {
@@ -195,6 +215,78 @@ function _capturePng(vp: any): string | null {
     return canvas.toDataURL('image/png');
   } catch (e) {
     console.warn('[askai] _capturePng failed:', e);
+    return null;
+  }
+}
+
+function _stripDataUrl(dataUrl: string): string {
+  return dataUrl.includes(',') ? dataUrl.split(',', 2)[1] : dataUrl;
+}
+
+function _loadImage(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = src;
+  });
+}
+
+/**
+ * Build a "with annotations" PNG by compositing the viewport's `.svg-layer`
+ * overlay on top of the already-captured clean canvas PNG. Returns null when
+ * nothing is drawn (annotated == clean) or on any failure — callers fall back
+ * to the clean image.
+ *
+ * Unlike _capturePng this does NOT need the live WebGL buffer: it rasterizes
+ * the clean data URL (passed in) plus the SVG DOM (which persists after the
+ * render), so it can safely run later inside the debounced push.
+ *
+ * The clean PNG is at backing-store resolution (canvas.width = cssWidth * DPR),
+ * while the SVG overlay is laid out in CSS pixels. We give the serialized SVG a
+ * viewBox of its CSS size and a width/height of the backing-store size so the
+ * annotations scale 1:1 onto the clean raster.
+ */
+async function _compositeAnnotated(element: any, cleanDataUrl: string): Promise<string | null> {
+  try {
+    const internal: Element | null =
+      typeof element?.querySelector === 'function'
+        ? element.querySelector('.viewport-element')
+        : null;
+    const svg = internal?.querySelector(':scope > .svg-layer') as SVGSVGElement | null;
+    // The layer always holds a <defs> (drop-shadow filter); a drawn annotation
+    // is any child that ISN'T that <defs>. No such child → annotated == clean.
+    const hasAnnotation =
+      !!svg && Array.from(svg.children).some(c => c.tagName.toLowerCase() !== 'defs');
+    if (!svg || !hasAnnotation) return null;
+
+    const baseImg = await _loadImage(cleanDataUrl);
+    const w = baseImg.naturalWidth;
+    const h = baseImg.naturalHeight;
+    if (!w || !h) return null;
+
+    const cssW = svg.clientWidth || parseFloat(svg.getAttribute('width') || '') || w;
+    const cssH = svg.clientHeight || parseFloat(svg.getAttribute('height') || '') || h;
+
+    const clone = svg.cloneNode(true) as SVGSVGElement;
+    clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+    clone.setAttribute('viewBox', `0 0 ${cssW} ${cssH}`);
+    clone.setAttribute('width', String(w));
+    clone.setAttribute('height', String(h));
+    const svgStr = new XMLSerializer().serializeToString(clone);
+    const svgUrl = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgStr);
+    const svgImg = await _loadImage(svgUrl);
+
+    const off = document.createElement('canvas');
+    off.width = w;
+    off.height = h;
+    const ctx = off.getContext('2d');
+    if (!ctx) return null;
+    ctx.drawImage(baseImg, 0, 0, w, h);
+    ctx.drawImage(svgImg, 0, 0, w, h);
+    return off.toDataURL('image/png');
+  } catch (e) {
+    console.warn('[askai] _compositeAnnotated failed:', e);
     return null;
   }
 }
@@ -240,7 +332,7 @@ export function startViewportTracker() {
     // render swaps buffers, so toDataURL there would return blank pixels.
     if (eventName === 'IMAGE_RENDERED') {
       const pngDataUrl = _capturePng(vp);
-      if (pngDataUrl) _pushScreenshotHeavy(state, pngDataUrl);
+      if (pngDataUrl) _pushScreenshotHeavy(state, pngDataUrl, vp.element);
     }
   };
 

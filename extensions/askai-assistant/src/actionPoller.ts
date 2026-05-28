@@ -498,6 +498,13 @@ function postMeasurement(
         body.areaUnit = stats.areaUnit || stats.unit;
       }
       if (typeof stats.perimeter === 'number') body.perimeter = stats.perimeter;
+      // Intensity stats off the same cachedStats object (PlanarFreehandROI etc.).
+      // These are what the OHIF panel shows as Mean/Max/Min/Std Dev.
+      if (typeof stats.mean === 'number') body.mean = stats.mean;
+      if (typeof stats.max === 'number') body.max = stats.max;
+      if (typeof stats.min === 'number') body.min = stats.min;
+      if (typeof stats.stdDev === 'number') body.stdDev = stats.stdDev;
+      if (stats.modalityUnit) body.modalityUnit = stats.modalityUnit;
     }
     const url = `${_resolveChainlitUrl()}/capture/measurement_result`;
     fetch(url, {
