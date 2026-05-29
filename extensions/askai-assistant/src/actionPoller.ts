@@ -20,6 +20,7 @@
 import { getEnabledElementByViewportId } from '@cornerstonejs/core';
 import { annotation as csAnnotation, utilities as csToolsUtilities } from '@cornerstonejs/tools';
 import { getCommandsManager, getActiveViewportId } from './managers';
+import { handleRenderSlices, type RenderSlicesAction } from './sliceRenderer';
 
 const POLL_INTERVAL_MS = 500;
 
@@ -73,12 +74,17 @@ type Action =
   | DrawAnnotationAction
   | SetWindowLevelAction
   | NavigateSliceAction
-  | TransformViewportAction;
+  | TransformViewportAction
+  | RenderSlicesAction;
 
 function _resolveChainlitUrl(): string {
-  const fromLS =
-    typeof window !== 'undefined' && window.localStorage?.getItem('askai.chainlitUrl');
-  return (fromLS || 'http://localhost:8000').replace(/\/$/, '');
+  if (typeof window === 'undefined') return 'http://localhost:8000';
+  const explicit =
+    (window as any).__ASKAI_CHAINLIT_URL__ || window.localStorage?.getItem('askai.chainlitUrl');
+  if (explicit) return String(explicit).replace(/\/$/, '');
+  const host = window.location.hostname;
+  const isLocal = host === 'localhost' || host === '127.0.0.1';
+  return isLocal ? 'http://localhost:8000' : 'https://chat.saigalab.com';
 }
 
 let _started = false;
@@ -134,6 +140,11 @@ function dispatch(action: Action) {
       return;
     case 'transform_viewport':
       transformViewport(action);
+      return;
+    case 'render_slices':
+      // Fire-and-forget: the renderer drives the stack and POSTs the captured
+      // frames back to /capture/slices itself (the backend polls for them).
+      void handleRenderSlices(action);
       return;
     default:
       console.warn('[askai] unknown action type:', (action as any).type);

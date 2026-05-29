@@ -160,12 +160,23 @@ window.config = {
       console.warn('[askai] mountChainlitWidget not defined after script load');
       return;
     }
-    try {
-      window.mountChainlitWidget({ chainlitServer: url, opened: true });
-      console.log(`[askai] Chainlit Copilot mounted (server: ${url})`);
-    } catch (e) {
-      console.warn('[askai] mountChainlitWidget failed:', e);
-    }
+    // Gate on a valid session: unauthenticated users are sent to the login page;
+    // the chat only mounts once /api/me confirms the cookie. Cross-subdomain
+    // (saigalab.com -> chat.saigalab.com) relies on the credentialed cookie.
+    fetch(`${url}/api/me`, { credentials: 'include' })
+      .then((r) => {
+        if (r.status === 401) {
+          window.location.href = `${url}/login`;
+          return;
+        }
+        try {
+          window.mountChainlitWidget({ chainlitServer: url, opened: true });
+          console.log(`[askai] Chainlit Copilot mounted (server: ${url})`);
+        } catch (e) {
+          console.warn('[askai] mountChainlitWidget failed:', e);
+        }
+      })
+      .catch((e) => console.warn('[askai] auth check failed:', e));
   };
   s.onerror = () => {
     console.warn(

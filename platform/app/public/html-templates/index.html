@@ -45,6 +45,15 @@
     <script type="text/javascript">
       console.time('scriptToView');
       window.PUBLIC_URL = '<%= PUBLIC_URL %>';
+      // Emscripten-generated WASM decoder glue (Cornerstone/DICOM codecs) falls
+      // back to the Node globals __filename/__dirname when document.currentScript
+      // is null — which happens on a page reload. They don't exist in browsers,
+      // so the bare reference throws a ReferenceError that crashes the app to a
+      // black screen on refresh. Defining them as empty strings makes the
+      // fallback a harmless no-op (the real wasm path comes from currentScript /
+      // the codec's locateFile when a decode actually runs).
+      window.__filename = window.__filename || '';
+      window.__dirname = window.__dirname || '';
     </script>
     <link
       rel="manifest"
@@ -52,20 +61,9 @@
     />
 
     <link
-      rel="shortcut icon"
-      href="<%= PUBLIC_URL %>assets/favicon.ico"
-    />
-    <link
       rel="icon"
       type="image/png"
-      sizes="16x16"
-      href="<%= PUBLIC_URL %>assets/favicon-16x16.png"
-    />
-    <link
-      rel="icon"
-      type="image/png"
-      sizes="32x32"
-      href="<%= PUBLIC_URL %>assets/favicon-32x32.png"
+      href="<%= PUBLIC_URL %>askai-logo.png"
     />
     <link
       rel="apple-touch-icon"
@@ -196,7 +194,7 @@
       src="<%= PUBLIC_URL %>init-service-worker.js"
     ></script>
 
-    <title>OHIF Viewer</title>
+    <title>SaigaLab</title>
 
     <script>
       function browserImportFunction(moduleId) {

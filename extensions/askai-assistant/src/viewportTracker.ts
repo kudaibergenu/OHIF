@@ -8,7 +8,7 @@
  *   2. In-process: notifies subscribers (the AI Status panel) so they
  *      can render the current state without re-fetching.
  */
-import { eventTarget, Enums as CSEnums, getEnabledElement } from '@cornerstonejs/core';
+import { eventTarget, Enums as CSEnums, getEnabledElement, metaData } from '@cornerstonejs/core';
 import { Enums as CSToolsEnums } from '@cornerstonejs/tools';
 
 export type ViewportState = {
@@ -17,6 +17,10 @@ export type ViewportState = {
   voi: { lower: number; upper: number } | null;
   modality: string | null;
   slice: { index: number; total: number } | null;
+  // BurnedInAnnotation (0028,0301) of the current image — text painted into the
+  // pixels that tag anonymization can't redact. The backend's PHI guard refuses
+  // to analyze a frame when this is true. null when the metadata isn't available.
+  burnedIn: boolean | null;
   updatedAt: number;
 };
 
@@ -26,6 +30,7 @@ const EMPTY_STATE: ViewportState = {
   voi: null,
   modality: null,
   slice: null,
+  burnedIn: null,
   updatedAt: 0,
 };
 
@@ -90,6 +95,7 @@ function _extractState(vp: any): ViewportState {
       voi,
       modality: null, // populated server-side from the DICOM if needed
       slice,
+      burnedIn: _readBurnedIn(imageId),
       updatedAt: Date.now(),
     };
   } catch (e) {
@@ -98,11 +104,32 @@ function _extractState(vp: any): ViewportState {
   }
 }
 
+// BurnedInAnnotation=YES of the current image, read from Cornerstone's parsed
+// instance metadata. null when unknown (no imageId / tag absent) — the backend
+// treats null as "not flagged", matching the old fail-open DICOMweb check.
+function _readBurnedIn(imageId: string | null): boolean | null {
+  if (!imageId) return null;
+  try {
+    const inst: any = metaData.get('instance', imageId);
+    const raw = inst?.BurnedInAnnotation;
+    if (raw == null) return null;
+    return String(raw).toUpperCase() === 'YES';
+  } catch {
+    return null;
+  }
+}
+
 function _resolveChainlitUrl(): string {
-  // Allow per-browser override via localStorage (same key as the Copilot inject)
-  const fromLS =
-    typeof window !== 'undefined' && window.localStorage?.getItem('askai.chainlitUrl');
-  return (fromLS || 'http://localhost:8000').replace(/\/$/, '');
+  if (typeof window === 'undefined') return 'http://localhost:8000';
+  // Prefer the global the Copilot inject sets synchronously, then the
+  // per-browser localStorage override (same key as the inject).
+  const explicit =
+    (window as any).__ASKAI_CHAINLIT_URL__ || window.localStorage?.getItem('askai.chainlitUrl');
+  if (explicit) return String(explicit).replace(/\/$/, '');
+  // No explicit config: localhost in dev, deployed backend in prod.
+  const host = window.location.hostname;
+  const isLocal = host === 'localhost' || host === '127.0.0.1';
+  return isLocal ? 'http://localhost:8000' : 'https://chat.saigalab.com';
 }
 
 function _debounce<T extends (...args: any[]) => void>(fn: T, ms: number): T {
@@ -132,6 +159,7 @@ const _pushStateCheap = _debounce(async (state: ViewportState) => {
         viewportId: state.viewportId,
         voi: state.voi,
         slice: state.slice,
+        burned_in: state.burnedIn,
       }),
     });
   } catch (e) {
@@ -180,6 +208,7 @@ const _pushScreenshotHeavy = _debounce(
         viewportId: state.viewportId,
         voi: state.voi,
         slice: state.slice,
+        burned_in: state.burnedIn,
         png_b64: b64,
       };
       if (annotatedB64) body.png_annotated_b64 = annotatedB64;
