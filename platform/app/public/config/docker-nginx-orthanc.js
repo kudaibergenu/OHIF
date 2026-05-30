@@ -113,10 +113,12 @@ window.config = {
   // our own brand mark. Pure config — no OHIF source is touched.
   whiteLabeling: {
     createLogoComponentFn: function (React) {
-      return React.createElement(
-        'div',
-        { style: { display: 'flex', alignItems: 'center', gap: '8px' } },
+      // Hide the Upload entry point inside the viewer — you're already looking at
+      // a study there, so it's only useful from the study list / landing.
+      const inViewer = /\/viewer(\/|$|\?)/.test(window.location.pathname + window.location.search);
+      const children = [
         React.createElement('img', {
+          key: 'logo',
           src: './askai-logo.png',
           alt: 'SaigaLab',
           style: { height: '40px', width: 'auto' },
@@ -124,6 +126,7 @@ window.config = {
         React.createElement(
           'span',
           {
+            key: 'name',
             style: {
               color: '#fff',
               fontSize: '18px',
@@ -134,25 +137,35 @@ window.config = {
           },
           'SaigaLab'
         ),
+      ];
+      if (!inViewer) {
         // Upload entry point — routes to OHIF's local drag-and-drop loader.
-        React.createElement(
-          'a',
-          {
-            href: '/local',
-            style: {
-              marginLeft: '16px',
-              padding: '6px 14px',
-              borderRadius: '6px',
-              background: '#2563eb',
-              color: '#fff',
-              fontSize: '14px',
-              fontWeight: 600,
-              textDecoration: 'none',
-              whiteSpace: 'nowrap',
+        children.push(
+          React.createElement(
+            'a',
+            {
+              key: 'upload',
+              href: '/local',
+              style: {
+                marginLeft: '16px',
+                padding: '6px 14px',
+                borderRadius: '6px',
+                background: '#2563eb',
+                color: '#fff',
+                fontSize: '14px',
+                fontWeight: 600,
+                textDecoration: 'none',
+                whiteSpace: 'nowrap',
+              },
             },
-          },
-          'Upload'
-        )
+            'Upload'
+          )
+        );
+      }
+      return React.createElement(
+        'div',
+        { style: { display: 'flex', alignItems: 'center', gap: '8px' } },
+        children
       );
     },
   },
@@ -238,9 +251,9 @@ window.config = {
       #${NS}{position:fixed;top:9px;right:12px;z-index:2147483000;
         font-family:system-ui,-apple-system,sans-serif;color:#e8eefc}
       #${NS} *{box-sizing:border-box}
-      #${NS} .chip{display:flex;align-items:center;gap:8px;cursor:pointer;
-        background:#121b2e;border:1px solid #1f2c45;border-radius:999px;
-        padding:5px 12px 5px 6px;min-width:130px;max-width:230px}
+      #${NS} .chip{display:flex;align-items:center;gap:8px;cursor:pointer;height:34px;
+        background:#121b2e;border:1px solid #1f2c45;border-radius:8px;
+        padding:0 12px 0 6px;min-width:130px;max-width:230px}
       #${NS} .chip:hover{border-color:#2a3b5c}
       #${NS} .av{flex:0 0 auto;width:26px;height:26px;border-radius:50%;
         background:#2563eb;color:#fff;font-weight:700;font-size:13px;
@@ -265,7 +278,7 @@ window.config = {
       #${NS} button.act{width:100%;padding:9px;border:0;border-radius:8px;cursor:pointer;
         font-weight:600;font-size:13px;background:#2563eb;color:#fff;margin-top:6px}
       #${NS} button.act.sec{background:#1f2c45;color:#e8eefc;font-weight:500}
-      #${NS} .note{font-size:10px;color:#6c80a6;margin-top:12px;line-height:1.4}
+      #${NS} .note{font-size:13px;color:#6c80a6;margin-top:12px;line-height:1.5}
       #${NS} .note a{color:#7aa2f7;text-decoration:none}
       #askai-chip-toasts{position:fixed;top:52px;right:12px;z-index:2147483000;
         width:300px;display:flex;flex-direction:column;gap:8px;
@@ -362,11 +375,11 @@ window.config = {
       if (isPro) return; // nothing to sell a Pro
       if (anon) {
         toast(
-          `You've used 80% of today's 10,000-token Guest limit. <a href="${url}/login">Sign in free</a> for 50,000/day.`
+          `You've used 80% of today's 10,000-token Guest limit. <a href="${url}/login">Sign in free</a> for 20,000/day.`
         );
       } else {
         toast(
-          `You've used 80% of today's 50,000-token limit. <a href="${url}/account">Upgrade to Pro</a> for 40× more.`
+          `You've used 80% of today's 20,000-token limit. <a href="${url}/account">Upgrade to Pro</a> for 5× more.`
         );
       }
     }
@@ -407,7 +420,7 @@ window.config = {
             if (d.plan === 'pro' && GRACE.includes(d.subscription_status)) {
               t.remove();
               toast(
-                'You’re on Pro — your daily cap is now 2,000,000 tokens. Thanks for supporting SaigaLab.'
+                'You’re on Pro — your daily cap is now 100,000 tokens. Thanks for supporting SaigaLab.'
               );
               return;
             }
@@ -468,7 +481,7 @@ window.config = {
       const settings = $('.act.settings');
       const logout = $('.act.logout');
       if (anon) {
-        primary.textContent = 'Sign in free — 50,000/day';
+        primary.textContent = 'Sign in free — 20,000/day';
         primary.onclick = () => {
           window.location.href = `${url}/login`;
         };
@@ -527,30 +540,8 @@ window.config = {
       }
     }
 
-    // Keep the chip clear of our own right-docked Chainlit sidebar. The copilot
-    // renders in a shadow DOM (which querySelectorAll can't pierce) and shrinks
-    // the host page, so we derive its width from the viewport-minus-page delta,
-    // with a sane default so the chip is NEVER hidden behind the panel. We never
-    // read OHIF's own DOM, so this stays decoupled from OHIF internals.
-    function chatWidth() {
-      const host = window.cl_shadowRootElement && window.cl_shadowRootElement.host;
-      if (host) {
-        const r = host.getBoundingClientRect();
-        if (r.width > 40 && Math.abs(r.right - window.innerWidth) < 8) return r.width;
-      }
-      const delta = window.innerWidth - document.body.getBoundingClientRect().width;
-      if (delta > 40) return delta;
-      return Math.min(440, Math.round(window.innerWidth * 0.3));
-    }
-    function reposition() {
-      const w = chatWidth();
-      root.style.right = w + 12 + 'px';
-      toastWrap.style.right = w + 12 + 'px';
-    }
-    window.addEventListener('resize', reposition);
-    [200, 800, 2000, 4000].forEach((t) => setTimeout(reposition, t));
-    reposition();
-
+    // The chip is anchored to the window's top-right edge via CSS (right:12px),
+    // so it tracks the viewport natively on resize — no JS repositioning needed.
     refresh();
     setInterval(refresh, 45000);
 
@@ -561,7 +552,7 @@ window.config = {
         sessionStorage.removeItem('askai.signedOut');
         if (JSON.parse(so).wasPro) {
           toast(
-            `You're signed out and browsing as a Guest. Your Pro subscription is safe — <a href="${url}/login">sign back in</a> to use your 2,000,000 tokens/day.`,
+            `You're signed out and browsing as a Guest. Your Pro subscription is safe — <a href="${url}/login">sign back in</a> to use your 100,000 tokens/day.`,
             { ms: 12000 }
           );
         } else {
