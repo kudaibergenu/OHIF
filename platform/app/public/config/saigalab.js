@@ -34,10 +34,12 @@ window.config = {
   // SaigaLab brand mark in the header / study list.
   whiteLabeling: {
     createLogoComponentFn: function (React) {
-      return React.createElement(
-        'div',
-        { style: { display: 'flex', alignItems: 'center', gap: '8px' } },
+      // Hide the Upload entry point inside the viewer — you're already looking at
+      // a study there, so it's only useful from the study list / landing.
+      const inViewer = /\/viewer(\/|$|\?)/.test(window.location.pathname + window.location.search);
+      const children = [
         React.createElement('img', {
+          key: 'logo',
           src: './askai-logo.png',
           alt: 'SaigaLab',
           style: { height: '40px', width: 'auto' },
@@ -45,6 +47,7 @@ window.config = {
         React.createElement(
           'span',
           {
+            key: 'name',
             style: {
               color: '#fff',
               fontSize: '18px',
@@ -55,25 +58,35 @@ window.config = {
           },
           'SaigaLab'
         ),
+      ];
+      if (!inViewer) {
         // Upload entry point — routes to OHIF's local drag-and-drop loader.
-        React.createElement(
-          'a',
-          {
-            href: '/local',
-            style: {
-              marginLeft: '16px',
-              padding: '6px 14px',
-              borderRadius: '6px',
-              background: '#2563eb',
-              color: '#fff',
-              fontSize: '14px',
-              fontWeight: 600,
-              textDecoration: 'none',
-              whiteSpace: 'nowrap',
+        children.push(
+          React.createElement(
+            'a',
+            {
+              key: 'upload',
+              href: '/local',
+              style: {
+                marginLeft: '16px',
+                padding: '6px 14px',
+                borderRadius: '6px',
+                background: '#2563eb',
+                color: '#fff',
+                fontSize: '14px',
+                fontWeight: 600,
+                textDecoration: 'none',
+                whiteSpace: 'nowrap',
+              },
             },
-          },
-          'Upload'
-        )
+            'Upload'
+          )
+        );
+      }
+      return React.createElement(
+        'div',
+        { style: { display: 'flex', alignItems: 'center', gap: '8px' } },
+        children
       );
     },
   },
@@ -150,9 +163,9 @@ window.config = {
       #${NS}{position:fixed;top:9px;right:12px;z-index:2147483000;
         font-family:system-ui,-apple-system,sans-serif;color:#e8eefc}
       #${NS} *{box-sizing:border-box}
-      #${NS} .chip{display:flex;align-items:center;gap:8px;cursor:pointer;
-        background:#121b2e;border:1px solid #1f2c45;border-radius:999px;
-        padding:5px 12px 5px 6px;min-width:130px;max-width:230px}
+      #${NS} .chip{display:flex;align-items:center;gap:8px;cursor:pointer;height:34px;
+        background:#121b2e;border:1px solid #1f2c45;border-radius:8px;
+        padding:0 12px 0 6px;min-width:130px;max-width:230px}
       #${NS} .chip:hover{border-color:#2a3b5c}
       #${NS} .av{flex:0 0 auto;width:26px;height:26px;border-radius:50%;
         background:#2563eb;color:#fff;font-weight:700;font-size:13px;
@@ -439,30 +452,8 @@ window.config = {
       }
     }
 
-    // Keep the chip clear of our own right-docked Chainlit sidebar. The copilot
-    // renders in a shadow DOM (which querySelectorAll can't pierce) and shrinks
-    // the host page, so we derive its width from the viewport-minus-page delta,
-    // with a sane default so the chip is NEVER hidden behind the panel. We never
-    // read OHIF's own DOM, so this stays decoupled from OHIF internals.
-    function chatWidth() {
-      const host = window.cl_shadowRootElement && window.cl_shadowRootElement.host;
-      if (host) {
-        const r = host.getBoundingClientRect();
-        if (r.width > 40 && Math.abs(r.right - window.innerWidth) < 8) return r.width;
-      }
-      const delta = window.innerWidth - document.body.getBoundingClientRect().width;
-      if (delta > 40) return delta;
-      return Math.min(440, Math.round(window.innerWidth * 0.3));
-    }
-    function reposition() {
-      const w = chatWidth();
-      root.style.right = w + 12 + 'px';
-      toastWrap.style.right = w + 12 + 'px';
-    }
-    window.addEventListener('resize', reposition);
-    [200, 800, 2000, 4000].forEach((t) => setTimeout(reposition, t));
-    reposition();
-
+    // The chip is anchored to the window's top-right edge via CSS (right:12px),
+    // so it tracks the viewport natively on resize — no JS repositioning needed.
     refresh();
     setInterval(refresh, 45000);
 
