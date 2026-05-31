@@ -191,6 +191,23 @@ window.config = {
   // before this async widget script loads) pushes state to the same backend.
   window.__ASKAI_CHAINLIT_URL__ = url;
 
+  // Backend → page: the one-click sample demo. The chat fires
+  // cl.CopilotFunction("loadStudy", {url}); we ack immediately, then navigate the
+  // viewer to the dicomjson deep-link (a full reload). After reload the chat's
+  // on_chat_start resumes the task via the seeded intent. (Verify the
+  // `/viewer/dicomjson` route + that the manifest is a {"studies":[...]} JSON.)
+  window.addEventListener('chainlit-call-fn', (e) => {
+    const d = (e && e.detail) || {};
+    if (d.name === 'loadStudy' && d.args && (d.args.path || d.args.url)) {
+      try { d.callback && d.callback('navigating'); } catch (_) {}
+      // `path` is a ready-made relative viewer route; `url` is the legacy
+      // dicomjson-manifest form. Same-origin nav (full reload) — on_chat_start
+      // resumes the task via the seeded intent.
+      window.location.href =
+        d.args.path || '/viewer/dicomjson?url=' + encodeURIComponent(d.args.url);
+    }
+  });
+
   // Public Firebase web config for the saigalab project (safe to embed; mirrors
   // the values the server-rendered /login page uses).
   const FIREBASE_CONFIG = {
@@ -375,11 +392,11 @@ window.config = {
       if (isPro) return; // nothing to sell a Pro
       if (anon) {
         toast(
-          `You've used 80% of today's 10,000-token Guest limit. <a href="${url}/login">Sign in free</a> for 20,000/day.`
+          `You've used 80% of today's 100,000-token Guest limit. <a href="${url}/login">Sign in free</a> for 200,000/day.`
         );
       } else {
         toast(
-          `You've used 80% of today's 20,000-token limit. <a href="${url}/account">Upgrade to Pro</a> for 5× more.`
+          `You've used 80% of today's 200,000-token limit. <a href="${url}/account">Upgrade to Pro</a> for 20× more.`
         );
       }
     }
@@ -420,7 +437,7 @@ window.config = {
             if (d.plan === 'pro' && GRACE.includes(d.subscription_status)) {
               t.remove();
               toast(
-                'You’re on Pro — your daily cap is now 100,000 tokens. Thanks for supporting SaigaLab.'
+                'You’re on Pro — your daily cap is now 4,000,000 tokens. Thanks for supporting SaigaLab.'
               );
               return;
             }
@@ -468,7 +485,7 @@ window.config = {
       if (pastDue) sub = 'Pro · payment issue';
       else if (canceling) sub = `Pro · ends ${fmtDate(d.current_period_end)}`;
       else if (isPro) sub = 'Pro plan · active';
-      else if (anon) sub = 'Guest · 10,000 tokens/day';
+      else if (anon) sub = 'Guest · 100,000 tokens/day';
       else sub = 'Free plan';
       $('.m-sub').textContent = sub;
 
@@ -481,7 +498,7 @@ window.config = {
       const settings = $('.act.settings');
       const logout = $('.act.logout');
       if (anon) {
-        primary.textContent = 'Sign in free — 20,000/day';
+        primary.textContent = 'Sign in free — 200,000/day';
         primary.onclick = () => {
           window.location.href = `${url}/login`;
         };
@@ -552,7 +569,7 @@ window.config = {
         sessionStorage.removeItem('askai.signedOut');
         if (JSON.parse(so).wasPro) {
           toast(
-            `You're signed out and browsing as a Guest. Your Pro subscription is safe — <a href="${url}/login">sign back in</a> to use your 100,000 tokens/day.`,
+            `You're signed out and browsing as a Guest. Your Pro subscription is safe — <a href="${url}/login">sign back in</a> to use your 4,000,000 tokens/day.`,
             { ms: 12000 }
           );
         } else {
