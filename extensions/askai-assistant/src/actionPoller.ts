@@ -70,11 +70,23 @@ type TransformViewportAction = {
   value?: number;
 };
 
+// Re-read the CURRENT value of an annotation the backend drew earlier, after the
+// user has edited it (dragged the handles). The backend enqueues this when the
+// radiologist declines the confirm-before-calculate prompt; we re-post the live
+// cachedStats value to /capture/measurement_result so it can recompute from the
+// exact edited number (no screenshot, no retyping).
+type ReadMeasurementAction = {
+  type: 'read_measurement';
+  annotationUID: string;
+  viewportId?: string;
+};
+
 type Action =
   | DrawAnnotationAction
   | SetWindowLevelAction
   | NavigateSliceAction
   | TransformViewportAction
+  | ReadMeasurementAction
   | RenderSlicesAction;
 
 function _resolveChainlitUrl(): string {
@@ -140,6 +152,9 @@ function dispatch(action: Action) {
       return;
     case 'transform_viewport':
       transformViewport(action);
+      return;
+    case 'read_measurement':
+      readMeasurement(action);
       return;
     case 'render_slices':
       // Fire-and-forget: the renderer drives the stack and POSTs the captured
@@ -430,6 +445,36 @@ function drawAnnotation(action: DrawAnnotationAction) {
   } catch (e) {
     console.warn(`[askai] draw_annotation (${action.toolName}) failed:`, e);
   }
+}
+
+// Re-post the live value of an existing annotation the user has since edited.
+// Looks the annotation up by UID, reads its toolName + current world geometry,
+// and reuses reportMeasurement — which re-reads the (now recomputed) cachedStats
+// and POSTs it back exactly like the initial draw. If the annotation is gone
+// (user deleted it) or no viewport is available we stay silent; the backend's
+// readback times out and falls back to asking the user to type the value.
+function readMeasurement(action: ReadMeasurementAction) {
+  const ann: any = csAnnotation.state.getAnnotation(action.annotationUID);
+  if (!ann) {
+    console.warn('[askai] read_measurement: annotation not found', action.annotationUID);
+    return;
+  }
+  const toolName = ann?.metadata?.toolName as DrawToolName | undefined;
+  if (!toolName) {
+    console.warn('[askai] read_measurement: annotation has no toolName', action.annotationUID);
+    return;
+  }
+  const viewportId = action.viewportId || getActiveViewportId();
+  const enabled = viewportId ? getEnabledElementByViewportId(viewportId) : null;
+  const vp: any = enabled?.viewport;
+  if (!vp) {
+    console.warn('[askai] read_measurement: no viewport for', viewportId);
+    return;
+  }
+  const handlePts = ann?.data?.handles?.points;
+  const worldPoints =
+    Array.isArray(handlePts) && handlePts.length ? handlePts : ann?.data?.contour?.polyline || [];
+  reportMeasurement(vp, action.annotationUID, toolName, worldPoints);
 }
 
 // Read the first target's cachedStats off a (possibly just-rendered) annotation.
