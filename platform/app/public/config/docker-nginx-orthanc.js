@@ -96,6 +96,9 @@ window.config = {
       configuration: {
         friendlyName: 'dicom json',
         name: 'json',
+        // Allow loading hosted teaching-study manifests from Firebase Storage
+        // even in the (authenticated) anonymous-guest session.
+        dangerouslyAllowedOriginsForAuthenticatedEnvironments: ['https://storage.googleapis.com'],
       },
     },
     {

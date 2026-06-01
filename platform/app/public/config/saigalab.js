@@ -25,7 +25,13 @@ window.config = {
     {
       namespace: '@ohif/extension-default.dataSourcesModule.dicomjson',
       sourceName: 'dicomjson',
-      configuration: { friendlyName: 'dicom json', name: 'json' },
+      configuration: {
+        friendlyName: 'dicom json',
+        name: 'json',
+        // Allow loading hosted teaching-study manifests from Firebase Storage
+        // even in the (authenticated) anonymous-guest session.
+        dangerouslyAllowedOriginsForAuthenticatedEnvironments: ['https://storage.googleapis.com'],
+      },
     },
   ],
   httpErrorHandler: error => {
