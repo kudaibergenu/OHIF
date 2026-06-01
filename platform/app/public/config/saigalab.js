@@ -46,23 +46,26 @@ window.config = {
       const children = [
         React.createElement('img', {
           key: 'logo',
-          src: './askai-logo.png',
+          src: '/askai-logo.png',
           alt: 'SaigaLab',
           style: { height: '40px', width: 'auto' },
         }),
         React.createElement(
-          'span',
+          'div',
           {
             key: 'name',
-            style: {
-              color: '#fff',
-              fontSize: '18px',
-              fontWeight: 600,
-              letterSpacing: '0.01em',
-              whiteSpace: 'nowrap',
-            },
+            style: { display: 'flex', flexDirection: 'column', lineHeight: '1.15', whiteSpace: 'nowrap' },
           },
-          'SaigaLab'
+          React.createElement(
+            'span',
+            { key: 'n', style: { color: '#fff', fontSize: '18px', fontWeight: 600, letterSpacing: '0.01em' } },
+            'SaigaLab'
+          ),
+          React.createElement(
+            'span',
+            { key: 't', style: { color: '#9fb2d6', fontSize: '11px', fontWeight: 500, letterSpacing: '0.02em' } },
+            'AI Measurement Tool'
+          )
         ),
       ];
       if (!inViewer) {
@@ -187,9 +190,10 @@ window.config = {
         font-family:system-ui,-apple-system,sans-serif;color:#e8eefc}
       #${NS} *{box-sizing:border-box}
       #${NS} .chip{display:flex;align-items:center;gap:8px;cursor:pointer;height:34px;
-        background:#121b2e;border:1px solid #1f2c45;border-radius:8px;
-        padding:0 12px 0 6px;min-width:130px;max-width:230px}
-      #${NS} .chip:hover{border-color:#2a3b5c}
+        background:#16233f;border:1px solid #2f4570;border-radius:8px;
+        padding:0 8px 0 6px;min-width:130px;max-width:260px;
+        box-shadow:0 2px 10px rgba(0,0,0,.4),0 0 0 1px rgba(37,99,235,.18)}
+      #${NS} .chip:hover{border-color:#3b82f6;box-shadow:0 2px 14px rgba(37,99,235,.4)}
       #${NS} .av{flex:0 0 auto;width:26px;height:26px;border-radius:50%;
         background:#2563eb;color:#fff;font-weight:700;font-size:13px;
         display:flex;align-items:center;justify-content:center;text-transform:uppercase}
@@ -200,21 +204,27 @@ window.config = {
       #${NS} .bar>i{display:block;height:100%;width:0;background:#2563eb;transition:width .3s,background .3s}
       #${NS} .pro{flex:0 0 auto;font-size:9px;font-weight:800;letter-spacing:.04em;
         color:#fbbf24;border:1px solid #fbbf24;border-radius:4px;padding:1px 4px}
-      #${NS} .menu{position:absolute;top:calc(100% + 6px);right:0;width:268px;
-        background:#121b2e;border:1px solid #1f2c45;border-radius:12px;padding:14px;
+      #${NS} .cta{flex:0 0 auto;display:none;align-items:center;gap:3px;
+        font-size:12px;font-weight:700;color:#fff;background:#2563eb;border:0;
+        border-radius:6px;padding:5px 9px;white-space:nowrap;cursor:pointer}
+      #${NS} .cta:hover{background:#3b82f6}
+      #${NS} .menu{position:absolute;top:calc(100% + 6px);right:0;width:300px;
+        background:#121b2e;border:1px solid #1f2c45;border-radius:12px;padding:16px;
         box-shadow:0 12px 32px rgba(0,0,0,.5);display:none}
       #${NS}[data-open="1"] .menu{display:block}
-      #${NS} .m-id{font-size:13px;font-weight:600;margin-bottom:2px}
-      #${NS} .m-sub{font-size:11px;color:#8aa0c6;margin-bottom:10px}
+      #${NS} .m-id{font-size:15px;font-weight:600;margin-bottom:2px}
+      #${NS} .m-sub{font-size:13px;color:#8aa0c6;margin-bottom:10px}
       #${NS} .m-bar{height:8px;background:#1f2c45;border-radius:6px;overflow:hidden;margin:6px 0}
       #${NS} .m-bar>i{display:block;height:100%;width:0;background:#2563eb}
-      #${NS} .m-usage{font-size:12px;color:#cdd9f0}
-      #${NS} .m-reset{font-size:11px;color:#6c80a6;margin:2px 0 10px}
-      #${NS} button.act{width:100%;padding:9px;border:0;border-radius:8px;cursor:pointer;
-        font-weight:600;font-size:13px;background:#2563eb;color:#fff;margin-top:6px}
+      #${NS} .m-usage{font-size:14px;color:#cdd9f0}
+      #${NS} .m-reset{font-size:12px;color:#6c80a6;margin:2px 0 10px}
+      #${NS} button.act{width:100%;padding:10px;border:0;border-radius:8px;cursor:pointer;
+        font-weight:600;font-size:14px;background:#2563eb;color:#fff;margin-top:6px}
       #${NS} button.act.sec{background:#1f2c45;color:#e8eefc;font-weight:500}
       #${NS} .note{font-size:13px;color:#6c80a6;margin-top:12px;line-height:1.5}
       #${NS} .note a{color:#7aa2f7;text-decoration:none}
+      #${NS} .contact{font-size:13px;color:#8aa0c6;margin-top:10px;line-height:1.5}
+      #${NS} .contact a{color:#7aa2f7;text-decoration:none}
       #askai-chip-toasts{position:fixed;top:52px;right:12px;z-index:2147483000;
         width:300px;display:flex;flex-direction:column;gap:8px;
         font-family:system-ui,-apple-system,sans-serif}
@@ -235,6 +245,7 @@ window.config = {
         <div class="av">G</div>
         <div class="meta"><div class="name">Guest</div><div class="bar"><i></i></div></div>
         <div class="pro" style="display:none">PRO</div>
+        <button class="cta" type="button">Sign in <span aria-hidden="true">→</span></button>
       </div>
       <div class="menu">
         <div class="m-id"></div><div class="m-sub"></div>
@@ -243,7 +254,8 @@ window.config = {
         <button class="act primary"></button>
         <button class="act sec settings" style="display:none">Account settings</button>
         <button class="act sec logout" style="display:none">Sign out</button>
-        <div class="note">Research / educational use only. Not a medical device and not for diagnosis.<br><a href="${url}/terms" target="_blank" rel="noopener">Terms</a> · <a href="${url}/privacy" target="_blank" rel="noopener">Privacy</a></div>
+        <div class="note">Research / educational use only. Not a medical device and not for diagnosis.<br><a href="${url}/about" target="_blank" rel="noopener">About</a> · <a href="${url}/terms" target="_blank" rel="noopener">Terms</a> · <a href="${url}/privacy" target="_blank" rel="noopener">Privacy</a></div>
+        <div class="contact">Inquiries: <a href="mailto:kuda@buildfast.studio">kuda@buildfast.studio</a><br>Connect on <a href="https://www.linkedin.com/in/kudakuda/" target="_blank" rel="noopener">LinkedIn</a>.</div>
       </div>`;
     document.body.appendChild(root);
 
@@ -411,6 +423,15 @@ window.config = {
       $('.m-bar>i').style.background = color;
       $('.m-usage').textContent = `${fmt(used)} / ${fmt(cap)} tokens today`;
       $('.m-reset').textContent = `Resets 00:00 UTC (in ${untilUtcMidnight()})`;
+
+      // Guest gets an inline "Sign in" pill on the chip itself (one click → login),
+      // so the call-to-action is visible without opening the menu.
+      const cta = $('.cta');
+      cta.style.display = anon ? 'flex' : 'none';
+      cta.onclick = (e) => {
+        e.stopPropagation();
+        window.location.href = `${url}/login`;
+      };
 
       const primary = $('.act.primary');
       const settings = $('.act.settings');

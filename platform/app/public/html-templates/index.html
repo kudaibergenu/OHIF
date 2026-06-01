@@ -63,7 +63,14 @@
     <link
       rel="icon"
       type="image/png"
-      href="<%= PUBLIC_URL %>askai-logo.png"
+      sizes="32x32"
+      href="<%= PUBLIC_URL %>favicon-32.png"
+    />
+    <link
+      rel="icon"
+      type="image/png"
+      sizes="16x16"
+      href="<%= PUBLIC_URL %>favicon-16.png"
     />
     <link
       rel="apple-touch-icon"
@@ -194,7 +201,29 @@
       src="<%= PUBLIC_URL %>init-service-worker.js"
     ></script>
 
-    <title>SaigaLab</title>
+    <title>SaigaLab — AI Measurement Tool for DICOM</title>
+    <meta
+      name="description"
+      content="SaigaLab is an AI-assisted measurement tool for DICOM medical images. Upload a study and run automated measurements such as the Evans index in your browser. For research and educational use only."
+    />
+
+    <!-- Open Graph / social + AI previews -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="SaigaLab" />
+    <meta property="og:title" content="SaigaLab — AI Measurement Tool for DICOM" />
+    <meta
+      property="og:description"
+      content="AI-assisted measurement tool for DICOM medical images. Run automated measurements like the Evans index in your browser. For research and educational use only."
+    />
+    <meta property="og:url" content="https://saigalab.com" />
+    <meta property="og:image" content="https://saigalab.com/assets/apple-touch-icon-1024x1024.png" />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="SaigaLab — AI Measurement Tool for DICOM" />
+    <meta
+      name="twitter:description"
+      content="AI-assisted measurement tool for DICOM medical images. For research and educational use only."
+    />
+    <meta name="twitter:image" content="https://saigalab.com/assets/apple-touch-icon-1024x1024.png" />
 
     <script>
       function browserImportFunction(moduleId) {
@@ -221,7 +250,11 @@
   </head>
 
   <body>
-    <noscript> You need to enable JavaScript to run this app. </noscript>
+    <noscript>
+      SaigaLab is an AI-assisted measurement tool for DICOM medical images, for
+      research and educational use only. This application requires JavaScript to
+      run. Please enable JavaScript in your browser to use SaigaLab.
+    </noscript>
     <div id="react-portal"></div>
     <div id="root"></div>
   </body>
