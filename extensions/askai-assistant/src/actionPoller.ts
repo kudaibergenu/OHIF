@@ -232,37 +232,54 @@ function navigateSlice(action: NavigateSliceAction) {
   // focused on the chat. Resolving the viewport by id + jumpToImage is proven
   // to move the slice.
   const viewportId = action.viewportId || getActiveViewportId();
-  const enabled = viewportId ? getEnabledElementByViewportId(viewportId) : null;
-  const vp: any = enabled?.viewport;
+  const getVp = (): any =>
+    (viewportId ? getEnabledElementByViewportId(viewportId) : null)?.viewport;
 
-  let target: number | null = null;
-  if (typeof action.imageIndex === 'number') {
-    target = action.imageIndex;
-  } else if (action.position === 'first') {
-    target = 0;
-  } else if (action.position === 'last') {
-    target = -1; // jumpToImage maps a negative index to (count + index)
-  } else if (typeof action.delta === 'number') {
-    const cur = _currentSliceIndex(vp);
-    if (cur == null) {
-      console.warn('[askai] navigate_slice: cannot read current slice index', action);
+  // Resolve to an ABSOLUTE target index against the CURRENT viewport state. Re-run
+  // per attempt so it stays correct as a freshly-loaded stack finishes loading.
+  const resolveTarget = (): number | null => {
+    const vp = getVp();
+    const total = _sliceCount(vp);
+    if (typeof action.imageIndex === 'number') {
+      return total != null ? Math.max(0, Math.min(total - 1, action.imageIndex)) : action.imageIndex;
+    }
+    if (action.position === 'first') return 0;
+    if (action.position === 'last') return total != null ? total - 1 : -1;
+    if (typeof action.delta === 'number') {
+      const cur = _currentSliceIndex(vp);
+      if (cur == null) return null;
+      const t = cur + action.delta;
+      return total != null ? Math.max(0, Math.min(total - 1, t)) : Math.max(0, t);
+    }
+    return null;
+  };
+
+  // Right after a fresh study load (or an all-slices render) the stack isn't
+  // settled, so a single jumpToImage can silently no-op. Re-issue until the
+  // current index actually lands on the target, up to a few attempts.
+  let attempts = 0;
+  const tryJump = () => {
+    const target = resolveTarget();
+    if (target == null) {
+      console.warn('[askai] navigate_slice: nothing to do', action);
       return;
     }
-    const total = _sliceCount(vp);
-    target = cur + action.delta;
-    target = total != null ? Math.max(0, Math.min(total - 1, target)) : Math.max(0, target);
-  } else {
-    console.warn('[askai] navigate_slice: nothing to do', action);
-    return;
-  }
-
-  const args: any = { imageIndex: target };
-  if (viewportId) args.viewport = { id: viewportId };
-  try {
-    cm.runCommand('jumpToImage', args);
-  } catch (e) {
-    console.warn('[askai] navigate_slice: jumpToImage failed', args, e);
-  }
+    const args: any = { imageIndex: target };
+    if (viewportId) args.viewport = { id: viewportId };
+    try {
+      cm.runCommand('jumpToImage', args);
+    } catch (e) {
+      console.warn('[askai] navigate_slice: jumpToImage failed', args, e);
+    }
+    attempts += 1;
+    setTimeout(() => {
+      const cur = _currentSliceIndex(getVp());
+      if (cur !== target && attempts < 4) {
+        tryJump();
+      }
+    }, 300);
+  };
+  tryJump();
 }
 
 function transformViewport(action: TransformViewportAction) {
