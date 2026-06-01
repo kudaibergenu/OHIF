@@ -19,7 +19,10 @@ window.config = {
     maxNumPrefetchRequests: 10,
     order: 'closest',
   },
-  defaultDataSourceName: 'orthancProxy',
+  // Default to local upload (matches prod saigalab.js) so the worklist doesn't
+  // query Orthanc on landing — dev needs no PACS for upload / sample-study flows.
+  // Orthanc is still selectable as a data source for anyone running it on :8042.
+  defaultDataSourceName: 'dicomlocal',
   dataSources: [
     {
       namespace: '@ohif/extension-default.dataSourcesModule.dicomweb',
