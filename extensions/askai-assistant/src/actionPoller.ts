@@ -21,6 +21,7 @@ import { getEnabledElementByViewportId } from '@cornerstonejs/core';
 import { annotation as csAnnotation, utilities as csToolsUtilities } from '@cornerstonejs/tools';
 import { getCommandsManager, getActiveViewportId } from './managers';
 import { handleRenderSlices, type RenderSlicesAction } from './sliceRenderer';
+import { forcePushState } from './viewportTracker';
 
 const POLL_INTERVAL_MS = 500;
 
@@ -81,12 +82,22 @@ type ReadMeasurementAction = {
   viewportId?: string;
 };
 
+// Force a fresh annotated-screenshot push. The backend enqueues this before the
+// measure localizer reads the slice (when it wants the annotated frame) because
+// the cached annotated PNG is only re-pushed on a Cornerstone event and may be
+// stale or missing a just-drawn measurement. We re-composite the live overlay
+// and re-push; the backend waits for the newer push (see _force_fresh_capture).
+type RequestCaptureAction = {
+  type: 'request_capture';
+};
+
 type Action =
   | DrawAnnotationAction
   | SetWindowLevelAction
   | NavigateSliceAction
   | TransformViewportAction
   | ReadMeasurementAction
+  | RequestCaptureAction
   | RenderSlicesAction;
 
 function _resolveChainlitUrl(): string {
@@ -160,6 +171,11 @@ function dispatch(action: Action) {
       // Fire-and-forget: the renderer drives the stack and POSTs the captured
       // frames back to /capture/slices itself (the backend polls for them).
       void handleRenderSlices(action);
+      return;
+    case 'request_capture':
+      // Re-composite the live overlay and re-push a fresh annotated screenshot
+      // so the waiting measure localizer reads a current frame.
+      forcePushState();
       return;
     default:
       console.warn('[askai] unknown action type:', (action as any).type);

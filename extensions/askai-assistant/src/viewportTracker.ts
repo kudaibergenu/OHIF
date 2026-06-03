@@ -232,6 +232,22 @@ const _pushScreenshotHeavy = _debounce(
 );
 
 /**
+ * Re-push the current annotated frame on demand. Re-composites the live
+ * `.svg-layer` overlay onto each tracked element's last clean raster and
+ * re-pushes via the heavy channel — no fresh WebGL capture needed. Used both by
+ * the ANNOTATION_* handler and by the backend's `request_capture` action: when
+ * the measure localizer wants the annotated frame but no Cornerstone event has
+ * fired recently, the cached annotated PNG can be stale or absent, so the
+ * backend asks for a fresh push and waits for it (see _force_fresh_capture).
+ * No-op until at least one IMAGE_RENDERED has populated _lastClean.
+ */
+export function forcePushState() {
+  for (const [element, stored] of _lastClean) {
+    _pushScreenshotHeavy(stored.state, stored.pngDataUrl, element);
+  }
+}
+
+/**
  * Synchronously capture the viewport canvas as a PNG data URL. MUST be called
  * inside the IMAGE_RENDERED event handler — that's the only moment when the
  * WebGL drawing buffer is guaranteed to be alive. Outside that handler the
@@ -399,11 +415,7 @@ export function startViewportTracker() {
   // would never reach /capture/state until the next image render. Re-composite
   // the now-updated overlay onto the last clean capture and re-push it. The
   // 500ms debounce in _pushScreenshotHeavy coalesces rapid drag events.
-  const onAnnotationChange = () => {
-    for (const [element, stored] of _lastClean) {
-      _pushScreenshotHeavy(stored.state, stored.pngDataUrl, element);
-    }
-  };
+  const onAnnotationChange = () => forcePushState();
   for (const ev of [
     CSToolsEnums.Events.ANNOTATION_COMPLETED,
     CSToolsEnums.Events.ANNOTATION_MODIFIED,

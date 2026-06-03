@@ -200,6 +200,14 @@ window.config = {
   // before this async widget script loads) pushes state to the same backend.
   window.__ASKAI_CHAINLIT_URL__ = url;
 
+  // Sign-in navigates the whole page to the chat origin's /login, which then
+  // redirects to APP_ORIGIN — dropping the loaded study. Carry the current
+  // viewer URL along as ?next= so a guest who signs in lands back on the same
+  // study. (Chat history is NOT preserved — it lives only in the session.)
+  function gotoLogin() {
+    window.location.href = `${url}/login?next=${encodeURIComponent(window.location.href)}`;
+  }
+
   // Backend → page: the one-click sample demo. The chat fires
   // cl.CopilotFunction("loadStudy", {url}); we ack immediately, then navigate the
   // viewer to the dicomjson deep-link (a full reload). After reload the chat's
@@ -410,11 +418,11 @@ window.config = {
       if (isPro) return; // nothing to sell a Pro
       if (anon) {
         toast(
-          `You've used 80% of today's 100,000-token Guest limit. <a href="${url}/login">Sign in free</a> for 200,000/day.`
+          `You've used 80% of today's 300,000-token Guest limit. <a href="${url}/login">Sign in free</a> for 1,800,000/day.`
         );
       } else {
         toast(
-          `You've used 80% of today's 200,000-token limit. <a href="${url}/account">Upgrade to Pro</a> for 20× more.`
+          `You've used 80% of today's 1,800,000-token limit. <a href="${url}/account">Upgrade to Pro</a> for ~7× more.`
         );
       }
     }
@@ -455,7 +463,7 @@ window.config = {
             if (d.plan === 'pro' && GRACE.includes(d.subscription_status)) {
               t.remove();
               toast(
-                'You’re on Pro — your daily cap is now 4,000,000 tokens. Thanks for supporting SaigaLab.'
+                'You’re on Pro — your daily cap is now 12,000,000 tokens. Thanks for supporting SaigaLab.'
               );
               return;
             }
@@ -503,7 +511,7 @@ window.config = {
       if (pastDue) sub = 'Pro · payment issue';
       else if (canceling) sub = `Pro · ends ${fmtDate(d.current_period_end)}`;
       else if (isPro) sub = 'Pro plan · active';
-      else if (anon) sub = 'Guest · 100,000 tokens/day';
+      else if (anon) sub = 'Guest · 300,000 tokens/day';
       else sub = 'Free plan';
       $('.m-sub').textContent = sub;
 
@@ -518,16 +526,16 @@ window.config = {
       cta.style.display = anon ? 'flex' : 'none';
       cta.onclick = (e) => {
         e.stopPropagation();
-        window.location.href = `${url}/login`;
+        gotoLogin();
       };
 
       const primary = $('.act.primary');
       const settings = $('.act.settings');
       const logout = $('.act.logout');
       if (anon) {
-        primary.textContent = 'Sign in free — 200,000/day';
+        primary.textContent = 'Sign in free — 1,800,000/day';
         primary.onclick = () => {
-          window.location.href = `${url}/login`;
+          gotoLogin();
         };
         settings.style.display = 'none';
         logout.style.display = 'none';
@@ -596,7 +604,7 @@ window.config = {
         sessionStorage.removeItem('askai.signedOut');
         if (JSON.parse(so).wasPro) {
           toast(
-            `You're signed out and browsing as a Guest. Your Pro subscription is safe — <a href="${url}/login">sign back in</a> to use your 4,000,000 tokens/day.`,
+            `You're signed out and browsing as a Guest. Your Pro subscription is safe — <a href="${url}/login">sign back in</a> to use your 12,000,000 tokens/day.`,
             { ms: 12000 }
           );
         } else {
@@ -631,7 +639,7 @@ window.config = {
       })
       .catch((e) => {
         console.warn('[askai] could not establish a session, sending to login:', e);
-        window.location.href = `${url}/login`;
+        gotoLogin();
       });
   };
   s.onerror = () => console.warn(`[askai] Could not load Chainlit Copilot from ${url}.`);
