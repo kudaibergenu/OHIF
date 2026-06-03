@@ -1,8 +1,16 @@
 import FileLoaderService from './fileLoaderService';
 import { DicomMetadataStore } from '@ohif/core';
+import { isConvertibleImage, imageFileToDicomFile } from './imageToDicom';
 
 const processFile = async file => {
   try {
+    // SaigaLab: OHIF only reads DICOM. Transparently wrap a dropped raster image
+    // (PNG/JPEG/…) into a DICOM Secondary Capture in-browser so it loads like any
+    // study. The image never leaves the browser. See ./imageToDicom.js.
+    if (isConvertibleImage(file)) {
+      file = await imageFileToDicomFile(file);
+    }
+
     const fileLoaderService = new FileLoaderService(file);
     const imageId = fileLoaderService.addFile(file);
     const image = await fileLoaderService.loadFile(file, imageId);
