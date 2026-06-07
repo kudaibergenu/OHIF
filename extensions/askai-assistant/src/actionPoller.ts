@@ -19,9 +19,12 @@
  */
 import { getEnabledElementByViewportId } from '@cornerstonejs/core';
 import { annotation as csAnnotation, utilities as csToolsUtilities } from '@cornerstonejs/tools';
-import { getCommandsManager, getActiveViewportId } from './managers';
+import { getCommandsManager, getActiveViewportId, getServicesManager } from './managers';
 import { handleRenderSlices, type RenderSlicesAction } from './sliceRenderer';
 import { forcePushState } from './viewportTracker';
+import dicomImageLoader from '@cornerstonejs/dicom-image-loader';
+import dcmjs from 'dcmjs';
+import { DicomMetadataStore } from '@ohif/core';
 
 const POLL_INTERVAL_MS = 500;
 
@@ -91,6 +94,18 @@ type RequestCaptureAction = {
   type: 'request_capture';
 };
 
+// Inject a server-generated DICOM-SEG (base64) and overlay it on the loaded study.
+// referencedSeriesInstanceUID must be the series the SEG references (so it hydrates
+// onto the right display set). viewportId optional → active viewport.
+type LoadSegmentationAction = {
+  type: 'load_segmentation';
+  seg_b64: string;
+  referencedSeriesInstanceUID: string;
+  viewportId?: string;
+  request_id?: string;
+  label?: string;
+};
+
 type Action =
   | DrawAnnotationAction
   | SetWindowLevelAction
@@ -98,7 +113,8 @@ type Action =
   | TransformViewportAction
   | ReadMeasurementAction
   | RequestCaptureAction
-  | RenderSlicesAction;
+  | RenderSlicesAction
+  | LoadSegmentationAction;
 
 function _resolveChainlitUrl(): string {
   if (typeof window === 'undefined') return 'http://localhost:8000';
@@ -177,8 +193,109 @@ function dispatch(action: Action) {
       // so the waiting measure localizer reads a current frame.
       forcePushState();
       return;
+    case 'load_segmentation':
+      // Inject a server-generated DICOM-SEG and overlay it on the loaded study.
+      void loadSegmentation(action);
+      return;
     default:
       console.warn('[askai] unknown action type:', (action as any).type);
+  }
+}
+
+// --- load_segmentation -----------------------------------------------------
+// Overlay a server-generated DICOM-SEG onto the already-loaded study, WITHOUT a
+// study reload. Mirrors OHIF's own local-upload path (filesToStudies.js):
+//   fileManager.add(blob) -> dcmjs parse -> DicomMetadataStore.addInstance
+// then makes the SEG display set and hydrates it via the SEG command. OHIF only
+// hydrates a SEG whose ReferencedSeriesSequence matches the loaded series' SOP
+// UIDs — the backend (seg_builder.py) guarantees that.
+async function loadSegmentation(action: LoadSegmentationAction) {
+  const services = getServicesManager()?.services as any;
+  const commandsManager = getCommandsManager();
+  if (!services || !commandsManager) {
+    console.warn('[askai] load_segmentation: managers not ready');
+    return;
+  }
+  const { displaySetService } = services;
+  try {
+    // 1. base64 -> bytes -> File (a locally-dropped DICOM, in effect)
+    const bin = atob(action.seg_b64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    const file = new File([bytes], 'seg.dcm', { type: 'application/dicom' });
+
+    // 2. inject like a local upload
+    const wadouri = (dicomImageLoader as any).wadouri;
+    const imageId = wadouri.fileManager.add(file);
+    const image = await wadouri.loadFileRequest(imageId);
+    const dicomData = (dcmjs as any).data.DicomMessage.readFile(image);
+    const dataset: any = (dcmjs as any).data.DicomMetaDictionary.naturalizeDataset(dicomData.dict);
+    dataset.url = imageId;
+    dataset._meta = (dcmjs as any).data.DicomMetaDictionary.namifyDataset(dicomData.meta);
+    dataset.AvailableTransferSyntaxUID =
+      dataset.AvailableTransferSyntaxUID || dataset._meta?.TransferSyntaxUID?.Value?.[0];
+    DicomMetadataStore.addInstance(dataset);
+
+    // 3. make sure the SEG display set exists (mid-session inject may not auto-create)
+    let segDS = _findSegDisplaySet(displaySetService, dataset.SeriesInstanceUID);
+    if (!segDS) {
+      try {
+        const series = DicomMetadataStore.getSeries(
+          dataset.StudyInstanceUID,
+          dataset.SeriesInstanceUID
+        );
+        displaySetService.makeDisplaySets(series?.instances || [dataset]);
+      } catch (e) {
+        console.warn('[askai] load_segmentation: makeDisplaySets failed', e);
+      }
+    }
+    // display-set creation can be async — poll briefly
+    for (let i = 0; i < 20 && !segDS; i++) {
+      await new Promise(r => setTimeout(r, 100));
+      segDS = _findSegDisplaySet(displaySetService, dataset.SeriesInstanceUID);
+    }
+    if (!segDS) {
+      console.warn('[askai] load_segmentation: SEG display set not created');
+      postSegmentationResult(action, { ok: false, error: 'seg-displayset-not-created' });
+      return;
+    }
+
+    // 4. hydrate onto the viewport showing the referenced series
+    const viewportId = action.viewportId || getActiveViewportId();
+    await commandsManager.runCommand('hydrateSecondaryDisplaySet', {
+      displaySet: segDS,
+      viewportId,
+    });
+
+    console.log('[askai] load_segmentation: hydrated', segDS.displaySetInstanceUID, 'on', viewportId);
+    postSegmentationResult(action, {
+      ok: true,
+      segmentationDisplaySetUID: segDS.displaySetInstanceUID,
+      label: action.label,
+    });
+  } catch (e) {
+    console.warn('[askai] load_segmentation failed', e);
+    postSegmentationResult(action, { ok: false, error: String(e) });
+  }
+}
+
+function _findSegDisplaySet(displaySetService: any, seriesInstanceUID: string): any | null {
+  const list = displaySetService.getDisplaySetsForSeries?.(seriesInstanceUID) || [];
+  return list.find((ds: any) => ds.Modality === 'SEG') || null;
+}
+
+function postSegmentationResult(action: LoadSegmentationAction, result: any) {
+  try {
+    const url = `${_resolveChainlitUrl()}/capture/segmentation_result`;
+    fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ request_id: action.request_id, ...result }),
+    }).catch(() => {
+      /* backend may be down between polls; the tool times out gracefully */
+    });
+  } catch (e) {
+    console.warn('[askai] postSegmentationResult failed', e);
   }
 }
 
