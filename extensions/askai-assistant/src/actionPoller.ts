@@ -106,6 +106,16 @@ type LoadSegmentationAction = {
   label?: string;
 };
 
+// Export the ORIGINAL DICOM P10 bytes of a loaded series back to the backend (so it
+// can run segmentation). Bytes come straight from the cornerstone file cache via
+// loadFileRequest — never reserialized — so SOP Instance UIDs are preserved and the
+// returned SEG will hydrate onto this exact study.
+type ExportDicomSeriesAction = {
+  type: 'export_dicom_series';
+  request_id: string;
+  seriesInstanceUID: string;
+};
+
 type Action =
   | DrawAnnotationAction
   | SetWindowLevelAction
@@ -114,7 +124,8 @@ type Action =
   | ReadMeasurementAction
   | RequestCaptureAction
   | RenderSlicesAction
-  | LoadSegmentationAction;
+  | LoadSegmentationAction
+  | ExportDicomSeriesAction;
 
 function _resolveChainlitUrl(): string {
   if (typeof window === 'undefined') return 'http://localhost:8000';
@@ -196,6 +207,10 @@ function dispatch(action: Action) {
     case 'load_segmentation':
       // Inject a server-generated DICOM-SEG and overlay it on the loaded study.
       void loadSegmentation(action);
+      return;
+    case 'export_dicom_series':
+      // Ship the loaded series' original DICOM bytes back to the backend.
+      void exportDicomSeries(action);
       return;
     default:
       console.warn('[askai] unknown action type:', (action as any).type);
@@ -304,6 +319,53 @@ function postSegmentationResult(action: LoadSegmentationAction, result: any) {
     });
   } catch (e) {
     console.warn('[askai] postSegmentationResult failed', e);
+  }
+}
+
+// --- export_dicom_series ---------------------------------------------------
+// Ship the loaded series' ORIGINAL DICOM P10 bytes to the backend (multipart).
+// Bytes come straight from cornerstone's file cache (loadFileRequest) — never
+// reserialized — so SOP Instance UIDs are preserved and the SEG built from them
+// will hydrate back onto this exact study.
+async function exportDicomSeries(action: ExportDicomSeriesAction) {
+  const services = getServicesManager()?.services as any;
+  if (!services) {
+    console.warn('[askai] export_dicom_series: managers not ready');
+    return;
+  }
+  const { displaySetService } = services;
+  try {
+    const dsList = displaySetService.getDisplaySetsForSeries?.(action.seriesInstanceUID) || [];
+    // the image display set for this series (skip SEG / derived overlays)
+    const ds =
+      dsList.find((d: any) => !d.isOverlayDisplaySet && (d.images?.length || d.instances?.length)) ||
+      dsList[0];
+    if (!ds) {
+      console.warn('[askai] export_dicom_series: series not found', action.seriesInstanceUID);
+      return;
+    }
+    const imageIds: string[] =
+      ds.images?.map((im: any) => im.imageId) ||
+      ds.instances?.map((i: any) => i.imageId || i.url) ||
+      [];
+    const wadouri = (dicomImageLoader as any).wadouri;
+    const fd = new FormData();
+    fd.append('request_id', action.request_id);
+    let n = 0;
+    for (const imageId of imageIds) {
+      try {
+        const buf = await wadouri.loadFileRequest(imageId); // original P10 ArrayBuffer
+        fd.append('files', new Blob([buf], { type: 'application/dicom' }), `${n}.dcm`);
+        n++;
+      } catch (e) {
+        console.warn('[askai] export_dicom_series: failed instance', imageId, e);
+      }
+    }
+    const url = `${_resolveChainlitUrl()}/capture/dicom_series`;
+    const r = await fetch(url, { method: 'POST', body: fd });
+    console.log(`[askai] export_dicom_series: sent ${n}/${imageIds.length} instances → ${r.status}`);
+  } catch (e) {
+    console.warn('[askai] export_dicom_series failed', e);
   }
 }
 
