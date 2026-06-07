@@ -231,6 +231,10 @@ async function loadSegmentation(action: LoadSegmentationAction) {
     const dicomData = (dcmjs as any).data.DicomMessage.readFile(image);
     const dataset: any = (dcmjs as any).data.DicomMetaDictionary.naturalizeDataset(dicomData.dict);
     dataset.url = imageId;
+    // dicomLoaderService.getLocalData() only resolves the in-memory bytes if the
+    // instance's imageId starts with 'dicomfile' — set it, or OHIF falls through to
+    // fetching the bare id as a URL and fails with "Invalid DICOM file".
+    dataset.imageId = imageId;
     dataset._meta = (dcmjs as any).data.DicomMetaDictionary.namifyDataset(dicomData.meta);
     dataset.AvailableTransferSyntaxUID =
       dataset.AvailableTransferSyntaxUID || dataset._meta?.TransferSyntaxUID?.Value?.[0];
@@ -260,17 +264,21 @@ async function loadSegmentation(action: LoadSegmentationAction) {
       return;
     }
 
-    // 4. hydrate onto the viewport showing the referenced series
+    // 4. load + show it on the viewport IMMEDIATELY (no manual "LOAD" prompt).
+    //    segDS.load() parses the SEG bytes and creates the segmentation;
+    //    addSegmentationRepresentation paints it on the viewport showing the CT.
     const viewportId = action.viewportId || getActiveViewportId();
-    await commandsManager.runCommand('hydrateSecondaryDisplaySet', {
-      displaySet: segDS,
-      viewportId,
-    });
+    const { segmentationService } = services;
+    if (typeof segDS.load === 'function') {
+      await segDS.load({});
+    }
+    const segmentationId = segDS.displaySetInstanceUID;
+    await segmentationService.addSegmentationRepresentation(viewportId, { segmentationId });
 
-    console.log('[askai] load_segmentation: hydrated', segDS.displaySetInstanceUID, 'on', viewportId);
+    console.log('[askai] load_segmentation: shown', segmentationId, 'on', viewportId);
     postSegmentationResult(action, {
       ok: true,
-      segmentationDisplaySetUID: segDS.displaySetInstanceUID,
+      segmentationDisplaySetUID: segmentationId,
       label: action.label,
     });
   } catch (e) {
