@@ -113,7 +113,7 @@ type LoadSegmentationAction = {
 type ExportDicomSeriesAction = {
   type: 'export_dicom_series';
   request_id: string;
-  seriesInstanceUID: string;
+  seriesInstanceUID?: string; // default: the active viewport's image series
 };
 
 type Action =
@@ -333,15 +333,21 @@ async function exportDicomSeries(action: ExportDicomSeriesAction) {
     console.warn('[askai] export_dicom_series: managers not ready');
     return;
   }
-  const { displaySetService } = services;
+  const { displaySetService, viewportGridService } = services;
   try {
-    const dsList = displaySetService.getDisplaySetsForSeries?.(action.seriesInstanceUID) || [];
-    // the image display set for this series (skip SEG / derived overlays)
-    const ds =
-      dsList.find((d: any) => !d.isOverlayDisplaySet && (d.images?.length || d.instances?.length)) ||
-      dsList[0];
+    const isImageDS = (d: any) => d && !d.isOverlayDisplaySet && (d.images?.length || d.instances?.length);
+    let ds: any = null;
+    if (action.seriesInstanceUID) {
+      ds = (displaySetService.getDisplaySetsForSeries?.(action.seriesInstanceUID) || []).find(isImageDS);
+    }
     if (!ds) {
-      console.warn('[askai] export_dicom_series: series not found', action.seriesInstanceUID);
+      // default: the image display set shown in the active viewport
+      const vpId = getActiveViewportId();
+      const uids = viewportGridService?.getDisplaySetsUIDsForViewport?.(vpId) || [];
+      ds = uids.map((u: string) => displaySetService.getDisplaySetByUID(u)).find(isImageDS);
+    }
+    if (!ds) {
+      console.warn('[askai] export_dicom_series: no image series to export');
       return;
     }
     const imageIds: string[] =
