@@ -334,6 +334,26 @@ async function exportDicomSeries(action: ExportDicomSeriesAction) {
     return;
   }
   const { displaySetService, viewportGridService } = services;
+
+  // Always POST something (even zero files) so the backend can tell "viewer
+  // answered with no images" apart from "viewer never answered" (a real
+  // timeout) instead of waiting out its full poll. See routes.py / tools.py.
+  const post = async (fd: FormData): Promise<number> => {
+    try {
+      const url = `${_resolveChainlitUrl()}/capture/dicom_series`;
+      const r = await fetch(url, { method: 'POST', body: fd });
+      return r.status;
+    } catch (e) {
+      console.warn('[askai] export_dicom_series: POST failed', e);
+      return 0;
+    }
+  };
+  const newFd = () => {
+    const fd = new FormData();
+    fd.append('request_id', action.request_id);
+    return fd;
+  };
+
   try {
     const isImageDS = (d: any) => d && !d.isOverlayDisplaySet && (d.images?.length || d.instances?.length);
     let ds: any = null;
@@ -341,13 +361,36 @@ async function exportDicomSeries(action: ExportDicomSeriesAction) {
       ds = (displaySetService.getDisplaySetsForSeries?.(action.seriesInstanceUID) || []).find(isImageDS);
     }
     if (!ds) {
-      // default: the image display set shown in the active viewport
+      // the image display set shown in the active viewport
       const vpId = getActiveViewportId();
       const uids = viewportGridService?.getDisplaySetsUIDsForViewport?.(vpId) || [];
       ds = uids.map((u: string) => displaySetService.getDisplaySetByUID(u)).find(isImageDS);
     }
     if (!ds) {
+      // Fallback: any loaded non-overlay image series. After a SEG overlay is
+      // added, the active viewport's display-set list can stop surfacing the
+      // source images (so the two lookups above miss) — fall back to the full
+      // display-set catalog, preferring a reconstructable volume (a SEG's
+      // source) and then the largest series.
+      const all: any[] = displaySetService.getActiveDisplaySets?.() || [];
+      const images = all.filter(isImageDS);
+      ds =
+        images.find((d: any) => d.isReconstructable) ||
+        images
+          .slice()
+          .sort(
+            (a: any, b: any) =>
+              (b.images?.length || b.instances?.length || 0) -
+              (a.images?.length || a.instances?.length || 0)
+          )[0] ||
+        null;
+      if (ds) {
+        console.log('[askai] export_dicom_series: used display-set catalog fallback', ds.displaySetInstanceUID);
+      }
+    }
+    if (!ds) {
       console.warn('[askai] export_dicom_series: no image series to export');
+      await post(newFd()); // 0 files → backend fails fast with a clear message
       return;
     }
     const imageIds: string[] =
@@ -355,8 +398,7 @@ async function exportDicomSeries(action: ExportDicomSeriesAction) {
       ds.instances?.map((i: any) => i.imageId || i.url) ||
       [];
     const wadouri = (dicomImageLoader as any).wadouri;
-    const fd = new FormData();
-    fd.append('request_id', action.request_id);
+    const fd = newFd();
     let n = 0;
     for (const imageId of imageIds) {
       try {
@@ -367,11 +409,11 @@ async function exportDicomSeries(action: ExportDicomSeriesAction) {
         console.warn('[askai] export_dicom_series: failed instance', imageId, e);
       }
     }
-    const url = `${_resolveChainlitUrl()}/capture/dicom_series`;
-    const r = await fetch(url, { method: 'POST', body: fd });
-    console.log(`[askai] export_dicom_series: sent ${n}/${imageIds.length} instances → ${r.status}`);
+    const status = await post(fd);
+    console.log(`[askai] export_dicom_series: sent ${n}/${imageIds.length} instances → ${status}`);
   } catch (e) {
     console.warn('[askai] export_dicom_series failed', e);
+    await post(newFd()); // unblock the backend poll even on unexpected failure
   }
 }
 
