@@ -628,6 +628,243 @@ window.config = {
     handleReturnParams();
   }
 
+  // ─── First-run onboarding card (picture-led; UI only, touches no OHIF source) ─
+  // Explains what the Copilot does the first time a visitor lands, shown ONCE per
+  // browser (localStorage, versioned key). Mirrors the chip's namespaced-DOM
+  // pattern so OHIF upgrades can't merge-conflict with it. A persistent bottom-left
+  // "?" re-opens it on demand (read-only — re-opening never re-arms the once flag).
+  // All copy lives in STR for a one-object i18n pass later (fr/es/ar).
+  function mountOnboarding() {
+    const NS = 'askai-onb';
+    const KEY = 'askai.onboarding.v1'; // bump to v2 to deliberately re-introduce
+    if (document.getElementById(`${NS}-help`)) return; // already mounted
+
+    // Never interrupt someone who arrived at a specific study, a seeded demo
+    // reload, the upload page, or an explicitly suppressed (?onboarding=0) link.
+    function suppressed() {
+      const path = window.location.pathname;
+      const search = window.location.search;
+      return (
+        /[?&]StudyInstanceUIDs=/.test(search) ||
+        /[?&](url|seededIntent)=/.test(search) ||
+        /[?&]onboarding=0\b/.test(search) ||
+        /\/local(basic)?(\/|$)/.test(path)
+      );
+    }
+    const seen = () => {
+      try { return localStorage.getItem(KEY) === 'seen'; } catch (_) { return false; }
+    };
+    const markSeen = () => {
+      try { localStorage.setItem(KEY, 'seen'); } catch (_) {}
+    };
+
+    const STR = {
+      title: 'Meet your imaging Copilot',
+      sub: 'Ask in plain language. It drives the viewer and drafts measurements — you verify and refine.',
+      shots: [
+        {
+          src: '/assets/onboarding/measure.webp',
+          alt: 'A brain MRI slice with a measurement line and a length label drawn on it',
+          cap: 'Draft measurements you drag to refine',
+          icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="4" y1="20" x2="20" y2="4"/><line x1="6.5" y1="15" x2="9" y2="17.5"/><line x1="11" y1="10.5" x2="13.5" y2="13"/><line x1="15.5" y1="6" x2="18" y2="8.5"/><circle cx="4" cy="20" r="1.4" fill="currentColor" stroke="none"/><circle cx="20" cy="4" r="1.4" fill="currentColor" stroke="none"/></svg>',
+        },
+        {
+          src: '/assets/onboarding/index.webp',
+          alt: 'Frontal-horn and inner-skull lines on a brain MRI with an Evans index draft value',
+          cap: 'Indices as drafts — Evans · Cobb · CTR',
+          icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M17 5H7l6 7-6 7h10"/></svg>',
+        },
+        {
+          src: '/assets/onboarding/viewer.webp',
+          alt: 'A plain-language chat command changing the viewer window/level',
+          cap: 'Drive the viewer in plain language',
+          icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/><circle cx="9" cy="7" r="2.3" fill="#0c1322"/><circle cx="15" cy="12" r="2.3" fill="#0c1322"/><circle cx="8" cy="17" r="2.3" fill="#0c1322"/></svg>',
+        },
+      ],
+      callout: 'You’re the reader of record. Confirm every number before you use it.',
+      trust:
+        'Research &amp; education only — not a medical device, not for diagnosis. De-identified data only; ' +
+        'the slices and text you send are processed by third-party AI in the US (Google Gemini; Replicate for segmentation).',
+      trustLink: 'What this means →',
+      go: 'Try it on a sample →',
+      goHelp: 'Loads a sample brain MRI and measures the Evans index — a draft you’d refine.',
+      hint: 'Press Esc or click outside to explore on your own.',
+      help: 'What can SaigaLab do here?',
+      pending:
+        'The sample demo is being finalised. Drag a DICOM onto the viewer to start with your own study — de-identified data only.',
+    };
+
+    const style = document.createElement('style');
+    style.textContent = `
+      #${NS}{position:fixed;inset:0;z-index:2147483600;display:flex;align-items:center;
+        justify-content:center;padding:20px;background:rgba(8,12,22,.72);
+        -webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px);
+        font-family:system-ui,-apple-system,sans-serif}
+      #${NS} *{box-sizing:border-box}
+      #${NS} .card{position:relative;width:min(640px,94vw);max-height:92vh;overflow:auto;
+        background:#121b2e;border:1px solid #1f2c45;border-radius:16px;padding:22px 24px;
+        color:#e8eefc;box-shadow:0 24px 64px rgba(0,0,0,.55)}
+      #${NS} .x{position:absolute;top:11px;right:14px;background:transparent;border:0;
+        color:#6c80a6;font-size:22px;line-height:1;cursor:pointer}
+      #${NS} .x:hover{color:#cdd9f0}
+      #${NS} .brand{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+      #${NS} .brand img{height:24px;width:auto}
+      #${NS} .brand span{font-size:14px;font-weight:600;color:#cdd9f0}
+      #${NS} h1{margin:0 0 4px;font-size:21px;font-weight:600;letter-spacing:.01em}
+      #${NS} .sub{margin:0 0 16px;font-size:14px;line-height:1.45;color:#8aa0c6}
+      #${NS} .shots{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
+        gap:12px;margin-bottom:16px}
+      #${NS} figure.shot{margin:0}
+      #${NS} .thumb{position:relative;aspect-ratio:4/3;background:#0c1322;border:1px solid #22304d;
+        border-radius:10px;overflow:hidden;display:flex;align-items:center;justify-content:center}
+      #${NS} .thumb .ic{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#4a6bb5}
+      #${NS} .thumb .ic svg{width:34px;height:34px}
+      #${NS} .thumb img{position:relative;z-index:1;width:100%;height:100%;object-fit:cover;display:block}
+      #${NS} figcaption{margin-top:7px;font-size:12px;line-height:1.35;color:#9fb2d6}
+      #${NS} .callout{border-left:3px solid #f59e0b;background:rgba(245,158,11,.08);
+        padding:9px 12px;border-radius:6px;font-size:13px;line-height:1.4;color:#ecd9b0;margin-bottom:14px}
+      #${NS} .trust{font-size:12px;line-height:1.5;color:#6c80a6;margin:0 0 16px}
+      #${NS} .trust a{color:#7aa2f7;text-decoration:none;white-space:nowrap}
+      #${NS} .go{display:block;width:100%;padding:12px;border:0;border-radius:9px;
+        background:#2563eb;color:#fff;font-size:15px;font-weight:700;cursor:pointer}
+      #${NS} .go:hover{background:#3b82f6}
+      #${NS} .gohelp{margin:8px 0 0;text-align:center;font-size:12px;color:#6c80a6}
+      #${NS} .hint{margin:10px 0 0;text-align:center;font-size:11px;color:#52658a}
+      #${NS}-help{position:fixed;left:16px;bottom:16px;z-index:2147483000;width:34px;height:34px;
+        border-radius:50%;background:#16233f;border:1px solid #2f4570;color:#cdd9f0;
+        font-size:17px;font-weight:700;cursor:pointer;box-shadow:0 2px 10px rgba(0,0,0,.4);
+        font-family:system-ui,-apple-system,sans-serif}
+      #${NS}-help:hover{border-color:#3b82f6;color:#fff}
+    `;
+    document.head.appendChild(style);
+
+    // Persistent re-access button (bottom-left — the chip owns top-right, the chat
+    // launcher owns bottom-right).
+    const help = document.createElement('button');
+    help.id = `${NS}-help`;
+    help.type = 'button';
+    help.textContent = '?';
+    help.title = STR.help;
+    help.setAttribute('aria-label', STR.help);
+    help.onclick = () => openCard();
+    document.body.appendChild(help);
+
+    function onbToast(msg) {
+      let wrap = document.getElementById('askai-chip-toasts');
+      if (!wrap) {
+        wrap = document.createElement('div');
+        wrap.id = 'askai-chip-toasts';
+        document.body.appendChild(wrap);
+      }
+      const t = document.createElement('div');
+      t.className = 'toast';
+      t.innerHTML = `<span class="x">×</span>${msg}`;
+      t.querySelector('.x').onclick = () => t.remove();
+      wrap.appendChild(t);
+      setTimeout(() => t.remove(), 9000);
+    }
+
+    // The single CTA: navigate to the hosted sample if the backend reports one,
+    // else fall back gracefully (never a dead/404 button). Lights up automatically
+    // once a sample is hosted and the backend exposes /api/sample.
+    async function triggerDemo(closeFn) {
+      markSeen();
+      try {
+        const r = await fetch(`${url}/api/sample?key=brain_mri_evans`, { credentials: 'include' });
+        if (r.ok) {
+          const d = await r.json();
+          if (d && d.ready && (d.path || d.viewer_url)) {
+            window.location.href = d.path || d.viewer_url;
+            return;
+          }
+        }
+      } catch (_) {
+        /* fall through to graceful fallback */
+      }
+      if (closeFn) closeFn();
+      onbToast(STR.pending);
+    }
+
+    let lastFocus = null;
+    function openCard() {
+      if (document.getElementById(NS)) return;
+      lastFocus = document.activeElement;
+
+      const back = document.createElement('div');
+      back.id = NS;
+      back.setAttribute('role', 'dialog');
+      back.setAttribute('aria-modal', 'true');
+      back.setAttribute('aria-labelledby', `${NS}-title`);
+
+      const shots = STR.shots
+        .map(
+          (s, i) => `
+        <figure class="shot">
+          <div class="thumb"><span class="ic">${s.icon}</span><img src="${s.src}" alt="${s.alt}" onerror="this.remove()"/></div>
+          <figcaption>${s.cap}</figcaption>
+        </figure>`
+        )
+        .join('');
+
+      back.innerHTML = `
+        <div class="card">
+          <button class="x" type="button" aria-label="Close">×</button>
+          <div class="brand"><img src="/askai-logo.png" alt=""/><span>SaigaLab</span></div>
+          <h1 id="${NS}-title">${STR.title}</h1>
+          <p class="sub">${STR.sub}</p>
+          <div class="shots">${shots}</div>
+          <div class="callout">${STR.callout}</div>
+          <p class="trust">${STR.trust} <a href="${url}/privacy" target="_blank" rel="noopener">${STR.trustLink}</a></p>
+          <button class="go" type="button">${STR.go}</button>
+          <p class="gohelp">${STR.goHelp}</p>
+          <p class="hint">${STR.hint}</p>
+        </div>`;
+      document.body.appendChild(back);
+
+      const card = back.querySelector('.card');
+      function close() {
+        markSeen();
+        document.removeEventListener('keydown', onKey, true);
+        back.remove();
+        try {
+          (lastFocus && lastFocus.focus ? lastFocus : help).focus();
+        } catch (_) {}
+      }
+      function onKey(e) {
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          close();
+          return;
+        }
+        if (e.key !== 'Tab') return;
+        const f = card.querySelectorAll('button, a[href]');
+        if (!f.length) return;
+        const first = f[0];
+        const last = f[f.length - 1];
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
+
+      back.querySelector('.x').onclick = close;
+      // Click on the backdrop (i.e. "start working" in the viewer behind it) closes.
+      back.addEventListener('mousedown', (e) => {
+        if (e.target === back) close();
+      });
+      back.querySelector('.go').onclick = () => triggerDemo(close);
+      document.addEventListener('keydown', onKey, true);
+      setTimeout(() => back.querySelector('.go').focus(), 30);
+    }
+
+    if (!seen() && !suppressed()) {
+      setTimeout(openCard, 250); // let the viewer paint behind it first
+    }
+  }
+
   const s = document.createElement('script');
   s.src = `${url}/copilot/index.js`;
   s.async = true;
@@ -643,6 +880,7 @@ window.config = {
       .then(() => {
         window.mountChainlitWidget({ chainlitServer: url, opened: true, displayMode: 'sidebar' });
         mountAccountChip();
+        mountOnboarding();
       })
       .catch((e) => {
         console.warn('[askai] could not establish a session, sending to login:', e);
