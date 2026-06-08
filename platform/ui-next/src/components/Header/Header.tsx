@@ -86,7 +86,11 @@ function Header({
             {PatientInfo}
             <div className="border-muted mx-1.5 h-[25px] border-r"></div>
             <div className="flex-shrink-0">
-              <DropdownMenu>
+              {/* modal={false} avoids Radix's react-remove-scroll scroll-lock,
+                  which (with the embedded Chainlit Copilot sidebar shrinking the
+                  document width) mis-adds a large body padding-right and collapses
+                  the page, exposing a black gap. */}
+              <DropdownMenu modal={false}>
                 <DropdownMenuTrigger asChild>
                   <Button
                     variant="ghost"

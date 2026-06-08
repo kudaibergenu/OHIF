@@ -282,6 +282,13 @@ window.config = {
 
     const style = document.createElement('style');
     style.textContent = `
+      /* Fix the "black gap" bug: the embedded Chainlit Copilot sidebar shrinks
+         documentElement width, which react-remove-scroll (used by OHIF's Radix
+         modal menus/dialogs) misreads as the scrollbar gap and re-adds as
+         body padding-right — collapsing the OHIF content and exposing the page
+         background. Neutralize that padding while a Radix modal is scroll-locked.
+         Higher specificity than react-remove-scroll-bar's body[data-scroll-locked]. */
+      html body[data-scroll-locked]{padding-right:0 !important;}
       #${NS}{position:fixed;top:9px;right:12px;z-index:2147483000;
         font-family:system-ui,-apple-system,sans-serif;color:#e8eefc}
       #${NS} *{box-sizing:border-box}
