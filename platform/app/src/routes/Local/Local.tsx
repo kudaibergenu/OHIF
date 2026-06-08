@@ -153,8 +153,9 @@ function Local({ modePath }: LocalProps) {
                       to load them locally.
                     </p>
                     <p className="text-muted-foreground text-base">
-                      Note: Your data remains locally within your browser
-                      <br /> and is never uploaded to any server.
+                      Note: Your files load directly in your browser to view them.
+                      <br /> If you run AI analysis or segmentation, the relevant images
+                      <br /> are sent to our AI providers (Google, Replicate; US) for processing.
                     </p>
                   </div>
                 )}

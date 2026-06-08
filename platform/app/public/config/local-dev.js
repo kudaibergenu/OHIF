@@ -72,7 +72,8 @@ window.config = {
           },
           'Upload'
         ),
-        // Privacy reassurance — images never leave the browser.
+        // Data note — local files view in-browser, but anything sent to the AI
+        // goes to the backend and on to third-party providers (Google/Replicate).
         React.createElement(
           'span',
           {
@@ -84,7 +85,7 @@ window.config = {
               maxWidth: '560px',
             },
           },
-          'Your images are processed entirely in your browser — never uploaded to or stored by SaigaLab. Research use only, not for diagnosis.'
+          'Your files view in your browser, but anything you send to the AI for analysis or segmentation is processed by third-party AI providers in the US (Google, Replicate). Research use only, not for diagnosis.'
         )
       );
     },

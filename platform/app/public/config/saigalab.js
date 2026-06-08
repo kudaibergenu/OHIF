@@ -1,7 +1,8 @@
 /** @type {AppTypes.Config} */
 // SaigaLab production config — static hosting (Firebase), browser-only local
-// upload (no PACS / no server-side PHI). The Copilot points at the Chainlit
-// backend on Fly. Select at build time with APP_CONFIG=config/saigalab.js.
+// upload (no PACS). Images you send to the AI go to the Chainlit backend on Fly
+// and on to third-party AI providers (Google Gemini, Replicate; US). Select at
+// build time with APP_CONFIG=config/saigalab.js.
 window.config = {
   routerBasename: null,
   extensions: [],
@@ -269,7 +270,7 @@ window.config = {
         <button class="act primary"></button>
         <button class="act sec settings" style="display:none">Account settings</button>
         <button class="act sec logout" style="display:none">Sign out</button>
-        <div class="note">Research / educational use only. Not a medical device and not for diagnosis.<br>Conversations &amp; images you send to the AI are saved to your account (US servers, incl. Replicate) until you delete them.<br><a href="${url}/about" target="_blank" rel="noopener">About</a> · <a href="${url}/terms" target="_blank" rel="noopener">Terms</a> · <a href="${url}/privacy" target="_blank" rel="noopener">Privacy</a></div>
+        <div class="note">Research / educational use only. Not a medical device and not for diagnosis.<br>Images &amp; text you send are processed by third-party AI providers in the US (Google Gemini; Replicate for segmentation) for every analysis, even as a guest. If you sign in and accept storage, your conversations &amp; images are also saved to your account (US servers) until you delete them.<br><a href="${url}/about" target="_blank" rel="noopener">About</a> · <a href="${url}/terms" target="_blank" rel="noopener">Terms</a> · <a href="${url}/privacy" target="_blank" rel="noopener">Privacy</a></div>
         <div class="contact">Inquiries: <a href="mailto:kuda@buildfast.studio">kuda@buildfast.studio</a><br>Connect on <a href="https://www.linkedin.com/in/kudakuda/" target="_blank" rel="noopener">LinkedIn</a>.</div>
       </div>`;
     document.body.appendChild(root);
