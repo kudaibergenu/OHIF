@@ -572,26 +572,39 @@ window.config = {
     };
 
     const STR = {
-      title: 'Meet your imaging Copilot',
-      sub: 'Ask in plain language. It drives the viewer and drafts measurements — you verify and refine.',
+      title: 'AI Measurement Tool for DICOM Images',
+      sub: 'Ask in plain language. It drafts distance, angle, and volume measurements and drives the viewer — you verify and refine.',
       shots: [
         {
           src: '/assets/onboarding/measure.webp',
           alt: 'A brain MRI slice with a measurement line and a length label drawn on it',
-          cap: 'Draft measurements you drag to refine',
+          cap: 'Automatic distance measurement',
           icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="4" y1="20" x2="20" y2="4"/><line x1="6.5" y1="15" x2="9" y2="17.5"/><line x1="11" y1="10.5" x2="13.5" y2="13"/><line x1="15.5" y1="6" x2="18" y2="8.5"/><circle cx="4" cy="20" r="1.4" fill="currentColor" stroke="none"/><circle cx="20" cy="4" r="1.4" fill="currentColor" stroke="none"/></svg>',
         },
         {
-          src: '/assets/onboarding/index.webp',
-          alt: 'Frontal-horn and inner-skull lines on a brain MRI with an Evans index draft value',
-          cap: 'Indices as drafts — Evans · Cobb · CTR',
-          icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M17 5H7l6 7-6 7h10"/></svg>',
+          src: '/assets/onboarding/angle.webp',
+          alt: 'Two lines meeting at a vertex on an MRI with an angle value in degrees',
+          cap: 'Automatic angle measurement',
+          icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19h16"/><path d="M4 19 19 6"/><path d="M10.5 19a6.5 6.5 0 0 1 2-4.7"/></svg>',
         },
         {
-          src: '/assets/onboarding/viewer.webp',
-          alt: 'A plain-language chat command changing the viewer window/level',
-          cap: 'Drive the viewer in plain language',
-          icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/><circle cx="9" cy="7" r="2.3" fill="#0c1322"/><circle cx="15" cy="12" r="2.3" fill="#0c1322"/><circle cx="8" cy="17" r="2.3" fill="#0c1322"/></svg>',
+          src: '/assets/onboarding/volume.webp',
+          alt: 'A segmented organ on an MRI shaded as a volume with its size in millilitres',
+          cap: 'Automatic volume measurement',
+          icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7.5 4.2v9.6L12 21l-7.5-4.2V7.2z"/><path d="M4.5 7.2 12 11.4l7.5-4.2"/><path d="M12 11.4V21"/></svg>',
+          info:
+            'Volumes come from automatic segmentation, powered by <strong>TotalSegmentator</strong> (CT &amp; MRI) — 100+ structures, including:' +
+            '<ul>' +
+            '<li><b>Organs</b> — brain, heart, liver, spleen, pancreas, gallbladder, stomach, kidneys, adrenal glands, lungs, bladder, prostate</li>' +
+            '<li><b>Vessels</b> — aorta, lung vessels, liver vessels</li>' +
+            '<li><b>Spine &amp; bones</b> — vertebrae (C1–S1), spinal cord, teeth, head &amp; neck bones, hip implant</li>' +
+            '<li><b>Neuro</b> — ventricles, cerebral hemorrhage</li>' +
+            '<li><b>Lung</b> — nodules, pleural effusion</li>' +
+            '<li><b>Liver</b> — Couinaud segments, lesions</li>' +
+            '<li><b>Head &amp; neck</b> — glands, muscles, eye muscles, craniofacial structures</li>' +
+            '<li><b>Body</b> — breasts, abdominal muscles, trunk cavities, whole body</li>' +
+            '</ul>' +
+            '<span class="muted">Plus licensed (non-commercial) tasks: tissue types, coronary arteries, brain substructures, heart &amp; aortic chambers, vertebral bodies, and more.</span>',
         },
       ],
       callout: 'You’re the reader of record. Confirm every number before you use it.',
@@ -599,7 +612,8 @@ window.config = {
         'Research &amp; education only — not a medical device, not for diagnosis. De-identified data only; ' +
         'the slices and text you send are processed by third-party AI in the US (Google Gemini; Replicate for segmentation).',
       trustLink: 'What this means →',
-      go: 'Try it on a sample →',
+      cont: 'Continue',
+      go: 'Try it on a Brain MRI sample →',
       goHelp: 'Loads a sample brain MRI and measures the Evans index — a draft you’d refine.',
       hint: 'Press Esc or click outside to explore on your own.',
       help: 'What can SaigaLab do here?',
@@ -638,9 +652,26 @@ window.config = {
         padding:9px 12px;border-radius:6px;font-size:13px;line-height:1.4;color:#ecd9b0;margin-bottom:14px}
       #${NS} .trust{font-size:12px;line-height:1.5;color:#6c80a6;margin:0 0 16px}
       #${NS} .trust a{color:#7aa2f7;text-decoration:none;white-space:nowrap}
-      #${NS} .go{display:block;width:100%;padding:12px;border:0;border-radius:9px;
+      #${NS} .cont{display:block;width:100%;padding:13px;border:0;border-radius:9px;
         background:#2563eb;color:#fff;font-size:15px;font-weight:700;cursor:pointer}
-      #${NS} .go:hover{background:#3b82f6}
+      #${NS} .cont:hover{background:#3b82f6}
+      #${NS} .go{display:block;width:100%;margin-top:9px;padding:11px;border:1px solid #2f4570;
+        border-radius:9px;background:transparent;color:#cdd9f0;font-size:14px;font-weight:600;cursor:pointer}
+      #${NS} .go:hover{border-color:#3b82f6;color:#fff;background:rgba(37,99,235,.08)}
+      #${NS} .infowrap{position:relative;display:inline-flex;align-items:center}
+      #${NS} .infobtn{display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;
+        margin-left:5px;border-radius:50%;border:1px solid #3a4d74;background:transparent;color:#9fb2d6;
+        font-size:10px;font-weight:700;line-height:1;cursor:pointer;padding:0;flex:none}
+      #${NS} .infobtn:hover{border-color:#3b82f6;color:#fff}
+      #${NS} .infopop{position:absolute;bottom:calc(100% + 7px);right:0;z-index:5;width:250px;max-width:78vw;
+        background:#0e1830;border:1px solid #2f4570;border-radius:9px;padding:10px 11px;font-size:11px;
+        line-height:1.5;color:#bcccea;box-shadow:0 12px 32px rgba(0,0,0,.5);text-align:left}
+      #${NS} .infopop[hidden]{display:none}
+      #${NS} .infopop strong{color:#e8eefc;font-weight:600}
+      #${NS} .infopop ul{margin:6px 0 0;padding-left:15px}
+      #${NS} .infopop li{margin:1px 0}
+      #${NS} .infopop b{color:#dde7fb}
+      #${NS} .infopop .muted{display:block;margin-top:7px;color:#7e93ba}
       #${NS} .gohelp{margin:8px 0 0;text-align:center;font-size:12px;color:#6c80a6}
       #${NS} .hint{margin:10px 0 0;text-align:center;font-size:11px;color:#52658a}
       #${NS}-help{position:fixed;left:16px;bottom:16px;z-index:2147483000;width:34px;height:34px;
@@ -714,7 +745,11 @@ window.config = {
           (s, i) => `
         <figure class="shot">
           <div class="thumb"><span class="ic">${s.icon}</span><img src="${s.src}" alt="${s.alt}" onerror="this.remove()"/></div>
-          <figcaption>${s.cap}</figcaption>
+          <figcaption>${s.cap}${
+            s.info
+              ? ` <span class="infowrap"><button class="infobtn" type="button" data-i="${i}" aria-label="What it can segment">i</button><div class="infopop" id="${NS}-info-${i}" role="tooltip" hidden>${s.info}</div></span>`
+              : ''
+          }</figcaption>
         </figure>`
         )
         .join('');
@@ -728,6 +763,7 @@ window.config = {
           <div class="shots">${shots}</div>
           <div class="callout">${STR.callout}</div>
           <p class="trust">${STR.trust} <a href="${url}/privacy" target="_blank" rel="noopener">${STR.trustLink}</a></p>
+          <button class="cont" type="button">${STR.cont}</button>
           <button class="go" type="button">${STR.go}</button>
           <p class="gohelp">${STR.goHelp}</p>
           <p class="hint">${STR.hint}</p>
@@ -768,12 +804,23 @@ window.config = {
       back.addEventListener('mousedown', (e) => {
         if (e.target === back) close();
       });
+      back.querySelector('.cont').onclick = close;
       back.querySelector('.go').onclick = () => triggerDemo(close);
+      // Info popovers (e.g. "what can volume segmentation cover?"). Toggle in
+      // place; never re-arms the once flag.
+      back.querySelectorAll('.infobtn').forEach((btn) => {
+        btn.onclick = (e) => {
+          e.stopPropagation();
+          const pop = btn.parentNode.querySelector('.infopop');
+          if (pop) pop.hidden = !pop.hidden;
+        };
+      });
       document.addEventListener('keydown', onKey, true);
-      setTimeout(() => back.querySelector('.go').focus(), 30);
+      setTimeout(() => back.querySelector('.cont').focus(), 30);
     }
 
     if (!seen() && !suppressed()) {
+      markSeen(); // first-run only: never reappear on later visits, even if dismissed without a click
       setTimeout(openCard, 250); // let the viewer paint behind it first
     }
   }
