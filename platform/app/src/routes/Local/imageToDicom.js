@@ -78,6 +78,17 @@ export function writeSecondaryCaptureDicom({
     InstanceNumber: '1',
     PatientName: 'ANONYMOUS',
     PatientID: 'SC000001',
+    // Empty type-2 patient/study attributes: standards require them to be present (may be
+    // empty), and downstream tools that copy patient/study info off the source by direct
+    // attribute access (e.g. the backend's highdicom DICOM-SEG writer) raise if they're
+    // absent. No PHI is invented — a SEG built on a converted image must not fail for a
+    // missing birth date.
+    PatientBirthDate: '',
+    PatientSex: '',
+    StudyDate: '',
+    StudyTime: '',
+    AccessionNumber: '',
+    ReferringPhysicianName: '',
     Modality: 'OT', // Other — a captured raster, not an acquisition.
     ConversionType: 'WSD', // Workstation (SC required attribute).
     SeriesDescription: description || 'Converted image',
