@@ -251,6 +251,14 @@ window.config = {
   function askaiSetLang(code) {
     if (!code || code === LANG) return;
     try { window.localStorage.setItem('i18nextLng', code); } catch (_) {}
+    // Cross-subdomain carrier so the chat backend (chat.saigalab.com) can localize
+    // its server-rendered welcome/status copy too: a .saigalab.com cookie rides the
+    // Chainlit websocket handshake, which saigalab/i18n.py reads (negotiate()).
+    try {
+      document.cookie =
+        'saiga_lang=' + encodeURIComponent(code) +
+        ';Domain=.saigalab.com;Path=/;Max-Age=31536000;SameSite=Lax;Secure';
+    } catch (_) {}
     try {
       const u = new URL(window.location.href);
       u.searchParams.set('lng', code);
