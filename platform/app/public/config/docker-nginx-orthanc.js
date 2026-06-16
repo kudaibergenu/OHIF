@@ -587,13 +587,42 @@ window.config = {
     appId: '1:66329312482:web:01be6a6e00aa74ffc572bb',
   };
 
+  // Single Firebase init for the whole page. The modular SDK throws if
+  // initializeApp() runs twice for the default app, so EVERY caller (anonymous
+  // sign-in, sign-out, and the token getter below) shares this one promise.
+  let _fbPromise = null;
+  function _firebase() {
+    if (!_fbPromise) {
+      _fbPromise = (async () => {
+        const appMod = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');
+        const authMod = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
+        const auth = authMod.getAuth(appMod.initializeApp(FIREBASE_CONFIG));
+        return { auth, authMod };
+      })();
+    }
+    return _fbPromise;
+  }
+
+  // Expose a Firebase ID-token getter for the askai-assistant extension's
+  // /capture/* calls. The backend verifies this token to a uid and keys every
+  // viewer channel (actions + viewport screenshots) by it, so two concurrent
+  // users never share the old global 'default' bus. Returns null until a session
+  // exists (the extension then simply skips the push and retries on the next tick;
+  // getIdToken() auto-refreshes the token as it nears expiry).
+  window.__ASKAI_GET_ID_TOKEN__ = async () => {
+    try {
+      const { auth } = await _firebase();
+      return auth.currentUser ? await auth.currentUser.getIdToken() : null;
+    } catch (_) {
+      return null;
+    }
+  };
+
   // First-time visitors get a real (anonymous) Firebase session automatically so
   // the chat connects and the viewer is usable without a signup wall. They can
   // upgrade to a named account later from the chat's account link.
   async function establishAnonymousSession() {
-    const appMod = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');
-    const authMod = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
-    const auth = authMod.getAuth(appMod.initializeApp(FIREBASE_CONFIG));
+    const { auth, authMod } = await _firebase();
     const cred = await authMod.signInAnonymously(auth);
     const idToken = await cred.user.getIdToken();
     const resp = await fetch(`${url}/api/session`, {
@@ -960,9 +989,8 @@ window.config = {
         /* clearing the cookie best-effort */
       }
       try {
-        const appMod = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');
-        const authMod = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
-        await authMod.signOut(authMod.getAuth(appMod.initializeApp(FIREBASE_CONFIG)));
+        const { auth, authMod } = await _firebase();
+        await authMod.signOut(auth);
       } catch (e) {
         /* already signed out */
       }
