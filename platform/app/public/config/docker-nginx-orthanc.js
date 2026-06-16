@@ -23,6 +23,12 @@ window.config = {
   // query Orthanc on landing — dev needs no PACS for upload / sample-study flows.
   // Orthanc is still selectable as a data source for anyone running it on :8042.
   defaultDataSourceName: 'dicomlocal',
+  // Hosted sample study (dicomjson manifest) — mirrors config/saigalab.js.
+  // @ohif/extension-askai-assistant injects it into DicomMetadataStore in
+  // preRegistration so it shows as a Study List row + opens. The bucket CORS
+  // allows http://localhost:3000, so dev uses the same hosted manifest.
+  sampleStudyManifestUrl:
+    'https://storage.googleapis.com/saigalab-7d1d7.firebasestorage.app/teaching/brain-mri/manifest.json',
   dataSources: [
     {
       namespace: '@ohif/extension-default.dataSourcesModule.dicomweb',
@@ -357,7 +363,7 @@ window.config = {
         <button class="act primary"></button>
         <button class="act sec settings" style="display:none">Account settings</button>
         <button class="act sec logout" style="display:none">Sign out</button>
-        <div class="note">Research / educational use only. Not a medical device and not for diagnosis.<br>Images &amp; text you send are processed by third-party AI providers in the US (Google Gemini; Replicate for segmentation) for every analysis, even as a guest. If you sign in and accept storage, your conversations &amp; images are also saved to your account (US servers) until you delete them.<br><a href="${url}/about" target="_blank" rel="noopener">About</a> · <a href="${url}/terms" target="_blank" rel="noopener">Terms</a> · <a href="${url}/privacy" target="_blank" rel="noopener">Privacy</a></div>
+        <div class="note">Research / educational use only. Not a medical device and not for diagnosis.<br>Images &amp; text you send are processed by third-party AI providers in the US (Google Gemini; Replicate for segmentation) for every analysis, even as a guest. If you accept saving (the one-tap prompt as a guest, or storage when you sign in), your conversations &amp; images are also saved (US servers) until you delete them — guest sessions auto-delete after 90 days.<br><a href="${url}/about" target="_blank" rel="noopener">About</a> · <a href="${url}/terms" target="_blank" rel="noopener">Terms</a> · <a href="${url}/privacy" target="_blank" rel="noopener">Privacy</a></div>
         <div class="contact">Inquiries: <a href="mailto:kuda@buildfast.studio">kuda@buildfast.studio</a><br>Connect on <a href="https://www.linkedin.com/in/kudakuda/" target="_blank" rel="noopener">LinkedIn</a>.</div>
       </div>`;
     document.body.appendChild(root);
@@ -634,6 +640,140 @@ window.config = {
   // pattern so OHIF upgrades can't merge-conflict with it. A persistent bottom-left
   // "?" re-opens it on demand (read-only — re-opening never re-arms the once flag).
   // All copy lives in STR for a one-object i18n pass later (fr/es/ar).
+  // ─── One-tap guest acknowledgement (the consent gate for recording) ──────────
+  // Guests stay usable without a signup wall, but we only RECORD a guest's
+  // conversation + images after this single affirmative tap — which is both their
+  // explicit consent to storage AND the same de-identified / no-PHI undertaking a
+  // named account accepts at signup. "Start" POSTs /api/account/consent, stamping
+  // the consent_version that storage_enabled checks, so a consenting guest hits the
+  // identical persistence path a signed-in user does (the next message they send is
+  // recorded; the thread is created lazily server-side — no reload). "Browse without
+  // saving" leaves the session ephemeral. consent_current from /api/me is the source
+  // of truth; a local "dismissed" flag just stops it nagging every reload until they
+  // choose from the account menu. onDone() runs once the gate resolves (shown +
+  // answered, or skipped) so the onboarding card follows without stacking. Copy lives
+  // in STR for the later i18n pass.
+  async function mountGuestConsent(onDone) {
+    const NS = 'askai-gc';
+    const KEY = 'askai.guestConsent.v1';
+    let finished = false;
+    const done = () => { if (finished) return; finished = true; try { onDone && onDone(); } catch (_) {} };
+    if (document.getElementById(NS)) return;
+
+    let me = null;
+    try {
+      const r = await fetch(`${url}/api/me`, { credentials: 'include' });
+      if (r.ok) me = await r.json();
+    } catch (_) { /* no session info → just skip the gate */ }
+    const isGuest = me && (me.is_anonymous || !me.email);
+    let dismissed = false;
+    try { dismissed = localStorage.getItem(KEY) === 'dismissed'; } catch (_) {}
+    if (!isGuest || me.consent_current || dismissed) { done(); return; }
+
+    const STR = {
+      title: 'Before you start',
+      body:
+        'SaigaLab is for <b>research and educational use only</b> — not a medical device, not for ' +
+        'diagnosis or patient care. Upload only <b>de-identified</b> data — never PHI. To answer ' +
+        'you, the images and text you send are processed by third-party AI providers in the US ' +
+        '(Google Gemini; Replicate for segmentation).',
+      save:
+        'Tap <b>Start</b> and your guest session — your conversation and the images you send — is ' +
+        'saved so you can revisit it, then <b>auto-deleted after 90 days</b> (or whenever you delete ' +
+        'it). You can delete it any time from the account menu.',
+      agree: 'Start — save my session',
+      decline: 'Browse without saving',
+      signin: 'or sign in for a free account →',
+      trustLink: 'Terms & Privacy',
+      err: 'Couldn’t enable saving just now — you can try again from the account menu.',
+    };
+
+    const style = document.createElement('style');
+    style.textContent = `
+      #${NS}{position:fixed;inset:0;z-index:2147483600;display:flex;align-items:center;
+        justify-content:center;padding:20px;background:rgba(8,12,22,.72);
+        -webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px);
+        font-family:system-ui,-apple-system,sans-serif}
+      #${NS} *{box-sizing:border-box}
+      #${NS} .card{position:relative;width:min(460px,94vw);max-height:92vh;overflow:auto;
+        background:#121b2e;border:1px solid #1f2c45;border-radius:16px;padding:22px 24px;
+        color:#e8eefc;box-shadow:0 24px 64px rgba(0,0,0,.55);text-align:left}
+      #${NS} .brand{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+      #${NS} .brand img{height:22px;width:auto}
+      #${NS} .brand span{font-size:13px;font-weight:600;color:#cdd9f0}
+      #${NS} h1{margin:0 0 10px;font-size:19px;font-weight:600}
+      #${NS} .body{margin:0 0 12px;font-size:13.5px;line-height:1.5;color:#aab8d4}
+      #${NS} .body b{color:#dde6f7}
+      #${NS} .save{color:#8aa0c6}
+      #${NS} .err{margin:0 0 10px;font-size:12.5px;color:#fca5a5}
+      #${NS} button{display:block;width:100%;border-radius:10px;font-size:14px;
+        font-weight:600;cursor:pointer;padding:11px 14px}
+      #${NS} .agree{background:#2563eb;border:1px solid #2563eb;color:#fff;margin-bottom:8px}
+      #${NS} .agree:hover{background:#1d4ed8}
+      #${NS} .agree:disabled{opacity:.6;cursor:default}
+      #${NS} .decline{background:transparent;border:1px solid #2c3a59;color:#aab8d4}
+      #${NS} .decline:hover{border-color:#3b4d72;color:#cdd9f0}
+      #${NS} .fine{margin:12px 0 0;font-size:12px;color:#6c80a6;text-align:center}
+      #${NS} .fine a{color:#8aa0c6}`;
+    document.head.appendChild(style);
+
+    const back = document.createElement('div');
+    back.id = NS;
+    back.setAttribute('role', 'dialog');
+    back.setAttribute('aria-modal', 'true');
+    back.setAttribute('aria-labelledby', `${NS}-title`);
+    back.innerHTML = `
+      <div class="card">
+        <div class="brand"><img src="/askai-logo.png" alt=""/><span>SaigaLab</span></div>
+        <h1 id="${NS}-title">${STR.title}</h1>
+        <p class="body">${STR.body}</p>
+        <p class="body save">${STR.save}</p>
+        <div class="err" role="alert" hidden></div>
+        <button class="agree" type="button">${STR.agree}</button>
+        <button class="decline" type="button">${STR.decline}</button>
+        <p class="fine"><a class="signin" href="#">${STR.signin}</a> · <a href="${url}/terms" target="_blank" rel="noopener">${STR.trustLink}</a></p>
+      </div>`;
+    document.body.appendChild(back);
+
+    const card = back.querySelector('.card');
+    function finish(markDismiss) {
+      if (markDismiss) { try { localStorage.setItem(KEY, 'dismissed'); } catch (_) {} }
+      document.removeEventListener('keydown', onKey, true);
+      back.remove();
+      done();
+    }
+    function onKey(e) {
+      if (e.key === 'Escape') { e.preventDefault(); finish(true); return; }
+      if (e.key !== 'Tab') return;
+      const f = card.querySelectorAll('button, a[href]');
+      if (!f.length) return;
+      const first = f[0], last = f[f.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    }
+    back.querySelector('.decline').onclick = () => finish(true);
+    back.querySelector('.signin').onclick = (e) => { e.preventDefault(); gotoLogin(); };
+    back.querySelector('.agree').onclick = async () => {
+      const btn = back.querySelector('.agree');
+      btn.disabled = true;
+      btn.textContent = 'Saving…';
+      try {
+        const r = await fetch(`${url}/api/account/consent`, { method: 'POST', credentials: 'include' });
+        if (!r.ok) throw new Error(`consent failed: ${r.status}`);
+        try { localStorage.setItem(KEY, 'acked'); } catch (_) {}
+        finish(false);
+      } catch (_) {
+        const e = back.querySelector('.err');
+        e.hidden = false;
+        e.textContent = STR.err;
+        btn.disabled = false;
+        btn.textContent = STR.agree;
+      }
+    };
+    document.addEventListener('keydown', onKey, true);
+    setTimeout(() => { try { back.querySelector('.agree').focus(); } catch (_) {} }, 30);
+  }
+
   function mountOnboarding() {
     const NS = 'askai-onb';
     const KEY = 'askai.onboarding.v1'; // bump to v2 to deliberately re-introduce
@@ -927,7 +1067,9 @@ window.config = {
       .then(() => {
         window.mountChainlitWidget({ chainlitServer: url, opened: true, displayMode: 'sidebar' });
         mountAccountChip();
-        mountOnboarding();
+        // Resolve the guest recording-consent gate first; the onboarding card follows
+        // once it's answered (or skipped for named / already-consented sessions).
+        mountGuestConsent(mountOnboarding);
       })
       .catch((e) => {
         console.warn('[askai] could not establish a session, sending to login:', e);

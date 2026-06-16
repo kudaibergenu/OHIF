@@ -4,6 +4,7 @@ import { id } from './id';
 import { startViewportTracker } from './viewportTracker';
 import { startActionPoller } from './actionPoller';
 import { setManagers } from './managers';
+import { hydrateSampleStudy } from './sampleStudy';
 
 const askaiAssistantExtension: Types.Extensions.Extension = {
   id,
@@ -20,10 +21,16 @@ const askaiAssistantExtension: Types.Extensions.Extension = {
    * servicesManager so the action poller can drive the viewer via OHIF
    * commands (window/level, scroll, transforms).
    */
-  preRegistration: (props: any) => {
+  preRegistration: async (props: any) => {
     setManagers(props);
     startViewportTracker();
     startActionPoller();
+    // Seed the hosted sample study into DicomMetadataStore BEFORE the worklist
+    // queries it, so it shows as a Study List row (via the dicomlocal source)
+    // and opens when clicked. OHIF awaits preRegistration before routes render,
+    // so the row is present on first paint. Fails graceful — a manifest hiccup
+    // never blocks boot beyond the fetch timeout.
+    await hydrateSampleStudy(props?.appConfig?.sampleStudyManifestUrl);
   },
 };
 
