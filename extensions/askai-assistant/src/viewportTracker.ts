@@ -10,6 +10,7 @@
  */
 import { eventTarget, Enums as CSEnums, getEnabledElement, metaData } from '@cornerstonejs/core';
 import { Enums as CSToolsEnums } from '@cornerstonejs/tools';
+import { captureAuthHeaders } from './captureAuth';
 
 export type ViewportState = {
   imageId: string | null;
@@ -150,11 +151,11 @@ const _pushStateCheap = _debounce(async (state: ViewportState) => {
   if (!state.imageId) return;
   const url = `${_resolveChainlitUrl()}/capture/state`;
   try {
+    const auth = await captureAuthHeaders();
     await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...auth },
       body: JSON.stringify({
-        session_id: 'default',
         imageId: state.imageId,
         viewportId: state.viewportId,
         voi: state.voi,
@@ -203,7 +204,6 @@ const _pushScreenshotHeavy = _debounce(
     const url = `${_resolveChainlitUrl()}/capture/state`;
     try {
       const body: Record<string, unknown> = {
-        session_id: 'default',
         imageId: state.imageId,
         viewportId: state.viewportId,
         voi: state.voi,
@@ -212,9 +212,10 @@ const _pushScreenshotHeavy = _debounce(
         png_b64: b64,
       };
       if (annotatedB64) body.png_annotated_b64 = annotatedB64;
+      const auth = await captureAuthHeaders();
       await fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...auth },
         body: JSON.stringify(body),
       });
       _screenshotPushCount++;

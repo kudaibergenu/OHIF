@@ -22,6 +22,7 @@ import { annotation as csAnnotation, utilities as csToolsUtilities } from '@corn
 import { getCommandsManager, getActiveViewportId, getServicesManager } from './managers';
 import { handleRenderSlices, type RenderSlicesAction } from './sliceRenderer';
 import { forcePushState } from './viewportTracker';
+import { captureAuthHeaders } from './captureAuth';
 import dicomImageLoader from '@cornerstonejs/dicom-image-loader';
 import dcmjs from 'dcmjs';
 import { DicomMetadataStore } from '@ohif/core';
@@ -144,11 +145,14 @@ export function startActionPoller() {
   if (_started) return;
   _started = true;
 
-  const url = `${_resolveChainlitUrl()}/capture/actions?session=default`;
+  // No session param: the backend keys the queue by the verified uid from the
+  // Bearer token, so each user drains only their own actions.
+  const url = `${_resolveChainlitUrl()}/capture/actions`;
 
   const poll = async () => {
     try {
-      const r = await fetch(url, { method: 'GET' });
+      const auth = await captureAuthHeaders();
+      const r = await fetch(url, { method: 'GET', headers: auth });
       if (!r.ok) return;
       const body = await r.json().catch(() => null);
       const actions: Action[] = (body && body.actions) || [];
@@ -307,12 +311,13 @@ function _findSegDisplaySet(displaySetService: any, seriesInstanceUID: string): 
   return list.find((ds: any) => ds.Modality === 'SEG') || null;
 }
 
-function postSegmentationResult(action: LoadSegmentationAction, result: any) {
+async function postSegmentationResult(action: LoadSegmentationAction, result: any) {
   try {
     const url = `${_resolveChainlitUrl()}/capture/segmentation_result`;
+    const auth = await captureAuthHeaders();
     fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...auth },
       body: JSON.stringify({ request_id: action.request_id, ...result }),
     }).catch(() => {
       /* backend may be down between polls; the tool times out gracefully */
@@ -341,7 +346,9 @@ async function exportDicomSeries(action: ExportDicomSeriesAction) {
   const post = async (fd: FormData): Promise<number> => {
     try {
       const url = `${_resolveChainlitUrl()}/capture/dicom_series`;
-      const r = await fetch(url, { method: 'POST', body: fd });
+      // FormData sets its own multipart Content-Type/boundary — only add auth.
+      const auth = await captureAuthHeaders();
+      const r = await fetch(url, { method: 'POST', headers: auth, body: fd });
       return r.status;
     } catch (e) {
       console.warn('[askai] export_dicom_series: POST failed', e);
@@ -844,13 +851,17 @@ function postMeasurement(
       if (stats.modalityUnit) body.modalityUnit = stats.modalityUnit;
     }
     const url = `${_resolveChainlitUrl()}/capture/measurement_result`;
-    fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    }).catch(() => {
-      /* backend may be down between polls; the tool will time out gracefully */
-    });
+    captureAuthHeaders()
+      .then(auth =>
+        fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...auth },
+          body: JSON.stringify(body),
+        })
+      )
+      .catch(() => {
+        /* backend may be down between polls; the tool will time out gracefully */
+      });
   } catch (e) {
     console.warn('[askai] postMeasurement failed:', e);
   }

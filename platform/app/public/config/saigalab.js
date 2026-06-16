@@ -119,6 +119,343 @@ window.config = {
   // before this async widget script loads) pushes state to the same backend.
   window.__ASKAI_CHAINLIT_URL__ = url;
 
+  // ─── Language (i18n) — self-contained; touches NO OHIF source ────────────────
+  // The 🌐 selector in the account menu switches the whole experience by reloading
+  // with ?lng=<code>: OHIF's own i18next detector (querystring → cache, see
+  // platform/i18n/src/config.js) re-renders the viewer UI, this chip re-renders its
+  // copy from I18N below, and the Chainlit Copilot is re-mounted in the mapped
+  // locale. LANGS mirrors @ohif/i18n's shipped set (platform/i18n/src/locales) —
+  // kept here, not imported, so OHIF upgrades can't break the chip. `chat` is the
+  // Chainlit locale to mount the Copilot with; null = Chainlit ships no translation
+  // for it, so the chat UI stays English while OHIF + this chip are translated.
+  const LANGS = [
+    { value: 'en-US', label: 'English',            chat: 'en-US', rtl: false },
+    { value: 'es',    label: 'Español',            chat: 'es',    rtl: false },
+    { value: 'fr',    label: 'Français',           chat: 'fr-FR', rtl: false },
+    { value: 'de',    label: 'Deutsch',            chat: 'de-DE', rtl: false },
+    { value: 'nl',    label: 'Nederlands',         chat: 'nl-NL', rtl: false },
+    { value: 'pt-BR', label: 'Português (Brasil)', chat: 'pt-PT', rtl: false },
+    { value: 'ru',    label: 'Русский',            chat: null,    rtl: false },
+    { value: 'tr-TR', label: 'Türkçe',             chat: null,    rtl: false },
+    { value: 'vi',    label: 'Tiếng Việt',         chat: null,    rtl: false },
+    { value: 'ja-JP', label: '日本語',              chat: 'ja',    rtl: false },
+    { value: 'zh',    label: '中文',                chat: 'zh-CN', rtl: false },
+    { value: 'ar',    label: 'العربية',            chat: 'ar-SA', rtl: true  },
+  ];
+
+  // Resolve the active language: URL ?lng= first, then OHIF's cached choice,
+  // normalized to a value we ship; default English.
+  function askaiCurrentLang() {
+    let v = null;
+    try { v = new URLSearchParams(window.location.search).get('lng'); } catch (_) {}
+    if (!v) { try { v = window.localStorage.getItem('i18nextLng'); } catch (_) {} }
+    if (!v) return 'en-US';
+    if (LANGS.some((l) => l.value === v)) return v;
+    const base = String(v).split('-')[0];
+    const hit = LANGS.find((l) => l.value === base || l.value.split('-')[0] === base);
+    return hit ? hit.value : 'en-US';
+  }
+  const LANG = askaiCurrentLang();
+  const LANG_DEF = LANGS.find((l) => l.value === LANG) || LANGS[0];
+
+  // Switch language by reloading with ?lng=<code> (OHIF treats the querystring as
+  // highest priority and caches it). One reload brings the viewer, this chip, and
+  // the chat back up consistently; server-side chat history is keyed by session.
+  function askaiSetLang(code) {
+    if (!code || code === LANG) return;
+    try { window.localStorage.setItem('i18nextLng', code); } catch (_) {}
+    try {
+      const u = new URL(window.location.href);
+      u.searchParams.set('lng', code);
+      window.location.assign(u.toString());
+    } catch (_) {
+      window.location.reload();
+    }
+  }
+
+  // Short UI-label catalog (machine-translated, native-reviewed). Legal /
+  // disclaimer / consent / onboarding copy is intentionally NOT translated here —
+  // it stays English pending per-language legal review. A missing key or language
+  // falls back to en-US.
+  const I18N = {
+      "en-US": {
+          "signIn": "Sign in",
+          "guest": "Guest",
+          "account": "Account",
+          "browsingAsGuest": "Browsing as Guest",
+          "signedInAs": "Signed in as {{email}}",
+          "freePlan": "Free plan",
+          "proPlanActive": "Pro plan · active",
+          "proPaymentIssue": "Pro · payment issue",
+          "proEnds": "Pro · ends {{date}}",
+          "guestTokensPerDay": "Guest · {{count}} tokens/day",
+          "tokensToday": "{{used}} / {{cap}} tokens today",
+          "resetsAt": "Resets 00:00 UTC (in {{time}})",
+          "accountSettings": "Account settings",
+          "signOut": "Sign out",
+          "upgradeToPro": "Upgrade to Pro",
+          "manageSubscription": "Manage subscription",
+          "updatePayment": "Update payment",
+          "resumePro": "Resume Pro",
+          "signInFreePerDay": "Sign in free — {{count}}/day",
+          "language": "Language"
+      },
+      "es": {
+          "signIn": "Iniciar sesión",
+          "guest": "Invitado",
+          "account": "Cuenta",
+          "browsingAsGuest": "Navegando como invitado",
+          "signedInAs": "Sesión iniciada como {{email}}",
+          "freePlan": "Plan gratuito",
+          "proPlanActive": "Plan Pro · activo",
+          "proPaymentIssue": "Pro · problema de pago",
+          "proEnds": "Pro · termina {{date}}",
+          "guestTokensPerDay": "Invitado · {{count}} tokens/día",
+          "tokensToday": "{{used}} / {{cap}} tokens hoy",
+          "resetsAt": "Se reinicia a las 00:00 UTC (en {{time}})",
+          "accountSettings": "Configuración de cuenta",
+          "signOut": "Cerrar sesión",
+          "upgradeToPro": "Mejorar a Pro",
+          "manageSubscription": "Gestionar suscripción",
+          "updatePayment": "Actualizar pago",
+          "resumePro": "Reanudar Pro",
+          "signInFreePerDay": "Inicia sesión gratis — {{count}}/día",
+          "language": "Idioma"
+      },
+      "fr": {
+          "signIn": "Se connecter",
+          "guest": "Invité",
+          "account": "Compte",
+          "browsingAsGuest": "Navigation en tant qu'invité",
+          "signedInAs": "Connecté en tant que {{email}}",
+          "freePlan": "Forfait gratuit",
+          "proPlanActive": "Forfait Pro · actif",
+          "proPaymentIssue": "Pro · problème de paiement",
+          "proEnds": "Pro · se termine le {{date}}",
+          "guestTokensPerDay": "Invité · {{count}} jetons/jour",
+          "tokensToday": "{{used}} / {{cap}} jetons aujourd'hui",
+          "resetsAt": "Réinitialisation à 00:00 UTC (dans {{time}})",
+          "accountSettings": "Paramètres du compte",
+          "signOut": "Se déconnecter",
+          "upgradeToPro": "Passer à Pro",
+          "manageSubscription": "Gérer l'abonnement",
+          "updatePayment": "Mettre à jour le paiement",
+          "resumePro": "Reprendre Pro",
+          "signInFreePerDay": "Connexion gratuite — {{count}}/jour",
+          "language": "Langue"
+      },
+      "de": {
+          "signIn": "Anmelden",
+          "guest": "Gast",
+          "account": "Konto",
+          "browsingAsGuest": "Als Gast unterwegs",
+          "signedInAs": "Angemeldet als {{email}}",
+          "freePlan": "Kostenloser Tarif",
+          "proPlanActive": "Pro-Tarif · aktiv",
+          "proPaymentIssue": "Pro · Zahlungsproblem",
+          "proEnds": "Pro · endet {{date}}",
+          "guestTokensPerDay": "Gast · {{count}} Tokens/Tag",
+          "tokensToday": "{{used}} / {{cap}} Tokens heute",
+          "resetsAt": "Reset 00:00 UTC (in {{time}})",
+          "accountSettings": "Kontoeinstellungen",
+          "signOut": "Abmelden",
+          "upgradeToPro": "Auf Pro upgraden",
+          "manageSubscription": "Abo verwalten",
+          "updatePayment": "Zahlung aktualisieren",
+          "resumePro": "Pro fortsetzen",
+          "signInFreePerDay": "Kostenlos anmelden — {{count}}/Tag",
+          "language": "Sprache"
+      },
+      "nl": {
+          "signIn": "Inloggen",
+          "guest": "Gast",
+          "account": "Account",
+          "browsingAsGuest": "Je gebruikt SaigaLab als gast",
+          "signedInAs": "Ingelogd als {{email}}",
+          "freePlan": "Gratis abonnement",
+          "proPlanActive": "Pro-abonnement · actief",
+          "proPaymentIssue": "Pro · betaalprobleem",
+          "proEnds": "Pro · eindigt {{date}}",
+          "guestTokensPerDay": "Gast · {{count}} tokens/dag",
+          "tokensToday": "{{used}} / {{cap}} tokens vandaag",
+          "resetsAt": "Reset om 00:00 UTC (over {{time}})",
+          "accountSettings": "Accountinstellingen",
+          "signOut": "Uitloggen",
+          "upgradeToPro": "Upgraden naar Pro",
+          "manageSubscription": "Abonnement beheren",
+          "updatePayment": "Betaling bijwerken",
+          "resumePro": "Pro hervatten",
+          "signInFreePerDay": "Gratis inloggen — {{count}}/dag",
+          "language": "Taal"
+      },
+      "pt-BR": {
+          "signIn": "Entrar",
+          "guest": "Convidado",
+          "account": "Conta",
+          "browsingAsGuest": "Navegando como convidado",
+          "signedInAs": "Conectado como {{email}}",
+          "freePlan": "Plano gratuito",
+          "proPlanActive": "Plano Pro · ativo",
+          "proPaymentIssue": "Pro · problema no pagamento",
+          "proEnds": "Pro · termina em {{date}}",
+          "guestTokensPerDay": "Convidado · {{count}} tokens/dia",
+          "tokensToday": "{{used}} / {{cap}} tokens hoje",
+          "resetsAt": "Redefine às 00:00 UTC (em {{time}})",
+          "accountSettings": "Configurações da conta",
+          "signOut": "Sair",
+          "upgradeToPro": "Assinar o Pro",
+          "manageSubscription": "Gerenciar assinatura",
+          "updatePayment": "Atualizar pagamento",
+          "resumePro": "Retomar o Pro",
+          "signInFreePerDay": "Entre grátis — {{count}}/dia",
+          "language": "Idioma"
+      },
+      "ru": {
+          "signIn": "Войти",
+          "guest": "Гость",
+          "account": "Аккаунт",
+          "browsingAsGuest": "Просматриваете как гость",
+          "signedInAs": "Вы вошли как {{email}}",
+          "freePlan": "Бесплатный план",
+          "proPlanActive": "План Pro · активен",
+          "proPaymentIssue": "Pro · проблема с оплатой",
+          "proEnds": "Pro · до {{date}}",
+          "guestTokensPerDay": "Гость · {{count}} токенов/день",
+          "tokensToday": "{{used}} / {{cap}} токенов сегодня",
+          "resetsAt": "Сброс в 00:00 UTC (через {{time}})",
+          "accountSettings": "Настройки аккаунта",
+          "signOut": "Выйти",
+          "upgradeToPro": "Перейти на Pro",
+          "manageSubscription": "Управление подпиской",
+          "updatePayment": "Обновить способ оплаты",
+          "resumePro": "Возобновить Pro",
+          "signInFreePerDay": "Войти бесплатно — {{count}}/день",
+          "language": "Язык"
+      },
+      "tr-TR": {
+          "signIn": "Oturum aç",
+          "guest": "Misafir",
+          "account": "Hesap",
+          "browsingAsGuest": "Misafir olarak geziniyorsunuz",
+          "signedInAs": "{{email}} olarak oturum açıldı",
+          "freePlan": "Ücretsiz plan",
+          "proPlanActive": "Pro plan · etkin",
+          "proPaymentIssue": "Pro · ödeme sorunu",
+          "proEnds": "Pro · {{date}} tarihinde bitiyor",
+          "guestTokensPerDay": "Misafir · {{count}} jeton/gün",
+          "tokensToday": "Bugün {{used}} / {{cap}} jeton",
+          "resetsAt": "00:00 UTC'de sıfırlanır ({{time}} içinde)",
+          "accountSettings": "Hesap ayarları",
+          "signOut": "Oturumu kapat",
+          "upgradeToPro": "Pro'ya yükselt",
+          "manageSubscription": "Aboneliği yönet",
+          "updatePayment": "Ödemeyi güncelle",
+          "resumePro": "Pro'yu sürdür",
+          "signInFreePerDay": "Ücretsiz oturum aç — {{count}}/gün",
+          "language": "Dil"
+      },
+      "vi": {
+          "signIn": "Đăng nhập",
+          "guest": "Khách",
+          "account": "Tài khoản",
+          "browsingAsGuest": "Đang dùng với tư cách Khách",
+          "signedInAs": "Đã đăng nhập với {{email}}",
+          "freePlan": "Gói miễn phí",
+          "proPlanActive": "Gói Pro · đang hoạt động",
+          "proPaymentIssue": "Pro · lỗi thanh toán",
+          "proEnds": "Pro · kết thúc {{date}}",
+          "guestTokensPerDay": "Khách · {{count}} token/ngày",
+          "tokensToday": "{{used}} / {{cap}} token hôm nay",
+          "resetsAt": "Đặt lại 00:00 UTC (sau {{time}})",
+          "accountSettings": "Cài đặt tài khoản",
+          "signOut": "Đăng xuất",
+          "upgradeToPro": "Nâng cấp lên Pro",
+          "manageSubscription": "Quản lý gói đăng ký",
+          "updatePayment": "Cập nhật thanh toán",
+          "resumePro": "Tiếp tục Pro",
+          "signInFreePerDay": "Đăng nhập miễn phí — {{count}}/ngày",
+          "language": "Ngôn ngữ"
+      },
+      "ja-JP": {
+          "signIn": "ログイン",
+          "guest": "ゲスト",
+          "account": "アカウント",
+          "browsingAsGuest": "ゲストとして利用中",
+          "signedInAs": "{{email}} でログイン中",
+          "freePlan": "無料プラン",
+          "proPlanActive": "Pro プラン · 有効",
+          "proPaymentIssue": "Pro · お支払いの問題",
+          "proEnds": "Pro · {{date}} に終了",
+          "guestTokensPerDay": "ゲスト · 1日 {{count}} トークン",
+          "tokensToday": "本日 {{used}} / {{cap}} トークン",
+          "resetsAt": "00:00 UTC にリセット（あと {{time}}）",
+          "accountSettings": "アカウント設定",
+          "signOut": "ログアウト",
+          "upgradeToPro": "Pro にアップグレード",
+          "manageSubscription": "サブスクリプションの管理",
+          "updatePayment": "お支払い情報を更新",
+          "resumePro": "Pro を再開",
+          "signInFreePerDay": "無料でログイン — 1日 {{count}} トークン",
+          "language": "言語"
+      },
+      "zh": {
+          "signIn": "登录",
+          "guest": "访客",
+          "account": "账户",
+          "browsingAsGuest": "以访客身份浏览",
+          "signedInAs": "已登录：{{email}}",
+          "freePlan": "免费版",
+          "proPlanActive": "Pro 版 · 已启用",
+          "proPaymentIssue": "Pro · 付款异常",
+          "proEnds": "Pro · {{date}} 到期",
+          "guestTokensPerDay": "访客 · 每日 {{count}} 个令牌",
+          "tokensToday": "今日令牌 {{used}} / {{cap}}",
+          "resetsAt": "UTC 00:00 重置（{{time}}后）",
+          "accountSettings": "账户设置",
+          "signOut": "退出登录",
+          "upgradeToPro": "升级到 Pro",
+          "manageSubscription": "管理订阅",
+          "updatePayment": "更新付款方式",
+          "resumePro": "恢复 Pro",
+          "signInFreePerDay": "免费登录 — 每日 {{count}} 个",
+          "language": "语言"
+      },
+      "ar": {
+          "signIn": "تسجيل الدخول",
+          "guest": "ضيف",
+          "account": "الحساب",
+          "browsingAsGuest": "التصفح كضيف",
+          "signedInAs": "مسجّل الدخول باسم {{email}}",
+          "freePlan": "الخطة المجانية",
+          "proPlanActive": "خطة Pro · نشطة",
+          "proPaymentIssue": "Pro · مشكلة في الدفع",
+          "proEnds": "Pro · تنتهي {{date}}",
+          "guestTokensPerDay": "ضيف · {{count}} رمز/يوم",
+          "tokensToday": "{{used}} / {{cap}} رمز اليوم",
+          "resetsAt": "يُعاد الضبط 00:00 UTC (خلال {{time}})",
+          "accountSettings": "إعدادات الحساب",
+          "signOut": "تسجيل الخروج",
+          "upgradeToPro": "الترقية إلى Pro",
+          "manageSubscription": "إدارة الاشتراك",
+          "updatePayment": "تحديث الدفع",
+          "resumePro": "استئناف Pro",
+          "signInFreePerDay": "سجّل الدخول مجانًا — {{count}}/يوم",
+          "language": "اللغة"
+      }
+  };
+
+  function askaiT(key, vars) {
+    const dict = I18N[LANG] || I18N['en-US'];
+    let s = dict && dict[key] != null ? dict[key] : I18N['en-US'][key];
+    if (s == null) return key;
+    if (vars) {
+      Object.keys(vars).forEach((k) => {
+        s = s.split('{{' + k + '}}').join(vars[k]);
+      });
+    }
+    return s;
+  }
+
   // Sign-in navigates the whole page to the chat origin's /login, which then
   // redirects to APP_ORIGIN — dropping the loaded study. Carry the current
   // viewer URL along as ?next= so a guest who signs in lands back on the same
@@ -155,13 +492,42 @@ window.config = {
     appId: '1:66329312482:web:01be6a6e00aa74ffc572bb',
   };
 
+  // Single Firebase init for the whole page. The modular SDK throws if
+  // initializeApp() runs twice for the default app, so EVERY caller (anonymous
+  // sign-in, sign-out, and the token getter below) shares this one promise.
+  let _fbPromise = null;
+  function _firebase() {
+    if (!_fbPromise) {
+      _fbPromise = (async () => {
+        const appMod = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');
+        const authMod = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
+        const auth = authMod.getAuth(appMod.initializeApp(FIREBASE_CONFIG));
+        return { auth, authMod };
+      })();
+    }
+    return _fbPromise;
+  }
+
+  // Expose a Firebase ID-token getter for the askai-assistant extension's
+  // /capture/* calls. The backend verifies this token to a uid and keys every
+  // viewer channel (actions + viewport screenshots) by it, so two concurrent
+  // users never share the old global 'default' bus. Returns null until a session
+  // exists (the extension then simply skips the push and retries on the next tick;
+  // getIdToken() auto-refreshes the token as it nears expiry).
+  window.__ASKAI_GET_ID_TOKEN__ = async () => {
+    try {
+      const { auth } = await _firebase();
+      return auth.currentUser ? await auth.currentUser.getIdToken() : null;
+    } catch (_) {
+      return null;
+    }
+  };
+
   // First-time visitors get a real (anonymous) Firebase session automatically so
   // the chat connects and the viewer is usable without a signup wall. They can
   // upgrade to a named account later from the chat's account link.
   async function establishAnonymousSession() {
-    const appMod = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');
-    const authMod = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
-    const auth = authMod.getAuth(appMod.initializeApp(FIREBASE_CONFIG));
+    const { auth, authMod } = await _firebase();
     const cred = await authMod.signInAnonymously(auth);
     const idToken = await cred.user.getIdToken();
     const resp = await fetch(`${url}/api/session`, {
@@ -247,6 +613,15 @@ window.config = {
       #${NS} .note a{color:#7aa2f7;text-decoration:none}
       #${NS} .contact{font-size:13px;color:#8aa0c6;margin-top:10px;line-height:1.5}
       #${NS} .contact a{color:#7aa2f7;text-decoration:none}
+      #${NS} .lang-row{display:flex;align-items:center;gap:8px;margin-top:12px;
+        padding-top:12px;border-top:1px solid #1f2c45}
+      #${NS} .lang-ico{font-size:14px;line-height:1;flex:0 0 auto}
+      #${NS} .lang-label{font-size:13px;color:#8aa0c6;flex:0 0 auto}
+      #${NS} .lang{flex:1 1 auto;min-width:0;background:#16233f;color:#e8eefc;
+        border:1px solid #2f4570;border-radius:8px;padding:6px 8px;font-size:13px;cursor:pointer}
+      #${NS} .lang:hover{border-color:#3b82f6}
+      #${NS} .menu[dir="rtl"]{direction:rtl;text-align:right}
+      #${NS} .menu[dir="rtl"] .note,#${NS} .menu[dir="rtl"] .contact{direction:ltr;text-align:left}
       #askai-chip-toasts{position:fixed;top:52px;right:12px;z-index:2147483000;
         width:300px;display:flex;flex-direction:column;gap:8px;
         font-family:system-ui,-apple-system,sans-serif}
@@ -265,17 +640,22 @@ window.config = {
     root.innerHTML = `
       <div class="chip">
         <div class="av">G</div>
-        <div class="meta"><div class="name">Guest</div><div class="bar"><i></i></div></div>
+        <div class="meta"><div class="name">${askaiT('guest')}</div><div class="bar"><i></i></div></div>
         <div class="pro" style="display:none">PRO</div>
-        <button class="cta" type="button">Sign in <span aria-hidden="true">→</span></button>
+        <button class="cta" type="button">${askaiT('signIn')} <span aria-hidden="true">→</span></button>
       </div>
       <div class="menu">
         <div class="m-id"></div><div class="m-sub"></div>
         <div class="m-bar"><i></i></div>
         <div class="m-usage"></div><div class="m-reset"></div>
         <button class="act primary"></button>
-        <button class="act sec settings" style="display:none">Account settings</button>
-        <button class="act sec logout" style="display:none">Sign out</button>
+        <button class="act sec settings" style="display:none">${askaiT('accountSettings')}</button>
+        <button class="act sec logout" style="display:none">${askaiT('signOut')}</button>
+        <div class="lang-row">
+          <span class="lang-ico" aria-hidden="true">🌐</span>
+          <label class="lang-label" for="${NS}-lang">${askaiT('language')}</label>
+          <select class="lang" id="${NS}-lang" aria-label="${askaiT('language')}"></select>
+        </div>
         <div class="note">Research / educational use only. Not a medical device and not for diagnosis.<br>Images &amp; text you send are processed by third-party AI providers in the US (Google Gemini; Replicate for segmentation) for every analysis, even as a guest. If you accept saving (the one-tap prompt as a guest, or storage when you sign in), your conversations &amp; images are also saved (US servers) until you delete them — guest sessions auto-delete after 90 days.<br><a href="${url}/about" target="_blank" rel="noopener">About</a> · <a href="${url}/terms" target="_blank" rel="noopener">Terms</a> · <a href="${url}/privacy" target="_blank" rel="noopener">Privacy</a></div>
         <div class="contact">Inquiries: <a href="mailto:kuda@buildfast.studio">kuda@buildfast.studio</a><br>Connect on <a href="https://www.linkedin.com/in/kudakuda/" target="_blank" rel="noopener">LinkedIn</a>.</div>
       </div>`;
@@ -283,6 +663,22 @@ window.config = {
 
     const $ = (sel) => root.querySelector(sel);
     const chip = $('.chip');
+
+    // Language selector: list every locale OHIF's UI ships; changing it reloads so
+    // OHIF, this chip, and the Chainlit chat all come back up in the chosen language.
+    const langSel = $('.lang');
+    if (langSel) {
+      LANGS.forEach((l) => {
+        const opt = document.createElement('option');
+        opt.value = l.value;
+        opt.textContent = l.label;
+        if (l.value === LANG) opt.selected = true;
+        langSel.appendChild(opt);
+      });
+      langSel.addEventListener('change', (e) => askaiSetLang(e.target.value));
+      langSel.addEventListener('click', (e) => e.stopPropagation());
+    }
+    if (LANG_DEF.rtl) { const m = $('.menu'); if (m) m.setAttribute('dir', 'rtl'); }
 
     chip.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -420,7 +816,7 @@ window.config = {
       const color = ratio >= 1 ? '#ef4444' : ratio >= 0.8 ? '#f59e0b' : '#2563eb';
 
       $('.av').textContent = anon ? 'G' : ((d.email || '?').trim()[0] || '?');
-      $('.name').textContent = anon ? 'Guest' : d.email || 'Account';
+      $('.name').textContent = anon ? askaiT('guest') : (d.email || askaiT('account'));
       $('.chip .bar>i').style.width = ratio * 100 + '%';
       $('.chip .bar>i').style.background = color;
       // Pro badge: gold when active, dimmed when canceling, amber on payment issue.
@@ -432,19 +828,19 @@ window.config = {
         badge.style.borderColor = pastDue ? '#f59e0b' : '#fbbf24';
       }
 
-      $('.m-id').textContent = anon ? 'Browsing as Guest' : `Signed in as ${d.email}`;
+      $('.m-id').textContent = anon ? askaiT('browsingAsGuest') : askaiT('signedInAs', { email: d.email });
       let sub;
-      if (pastDue) sub = 'Pro · payment issue';
-      else if (canceling) sub = `Pro · ends ${fmtDate(d.current_period_end)}`;
-      else if (isPro) sub = 'Pro plan · active';
-      else if (anon) sub = 'Guest · 300,000 tokens/day';
-      else sub = 'Free plan';
+      if (pastDue) sub = askaiT('proPaymentIssue');
+      else if (canceling) sub = askaiT('proEnds', { date: fmtDate(d.current_period_end) });
+      else if (isPro) sub = askaiT('proPlanActive');
+      else if (anon) sub = askaiT('guestTokensPerDay', { count: '300,000' });
+      else sub = askaiT('freePlan');
       $('.m-sub').textContent = sub;
 
       $('.m-bar>i').style.width = ratio * 100 + '%';
       $('.m-bar>i').style.background = color;
-      $('.m-usage').textContent = `${fmt(used)} / ${fmt(cap)} tokens today`;
-      $('.m-reset').textContent = `Resets 00:00 UTC (in ${untilUtcMidnight()})`;
+      $('.m-usage').textContent = askaiT('tokensToday', { used: fmt(used), cap: fmt(cap) });
+      $('.m-reset').textContent = askaiT('resetsAt', { time: untilUtcMidnight() });
 
       // Guest gets an inline "Sign in" pill on the chip itself (one click → login),
       // so the call-to-action is visible without opening the menu.
@@ -459,17 +855,17 @@ window.config = {
       const settings = $('.act.settings');
       const logout = $('.act.logout');
       if (anon) {
-        primary.textContent = 'Sign in free — 1,800,000/day';
+        primary.textContent = askaiT('signInFreePerDay', { count: '1,800,000' });
         primary.onclick = () => {
           gotoLogin();
         };
         settings.style.display = 'none';
         logout.style.display = 'none';
       } else {
-        if (pastDue) primary.textContent = 'Update payment';
-        else if (canceling) primary.textContent = 'Resume Pro';
-        else if (isPro) primary.textContent = 'Manage subscription';
-        else primary.textContent = 'Upgrade to Pro';
+        if (pastDue) primary.textContent = askaiT('updatePayment');
+        else if (canceling) primary.textContent = askaiT('resumePro');
+        else if (isPro) primary.textContent = askaiT('manageSubscription');
+        else primary.textContent = askaiT('upgradeToPro');
         primary.onclick = () => {
           window.location.href = `${url}/account`;
         };
@@ -498,9 +894,8 @@ window.config = {
         /* clearing the cookie best-effort */
       }
       try {
-        const appMod = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');
-        const authMod = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
-        await authMod.signOut(authMod.getAuth(appMod.initializeApp(FIREBASE_CONFIG)));
+        const { auth, authMod } = await _firebase();
+        await authMod.signOut(auth);
       } catch (e) {
         /* already signed out */
       }
@@ -978,7 +1373,11 @@ window.config = {
     // the user never lands on a dead, unauthenticated screen.
     ensureSession()
       .then(() => {
-        window.mountChainlitWidget({ chainlitServer: url, opened: true, displayMode: 'sidebar' });
+        window.mountChainlitWidget(
+          LANG_DEF.chat
+            ? { chainlitServer: url, opened: true, displayMode: 'sidebar', language: LANG_DEF.chat }
+            : { chainlitServer: url, opened: true, displayMode: 'sidebar' }
+        );
         mountAccountChip();
         // Resolve the guest recording-consent gate first; the onboarding card follows
         // once it's answered (or skipped for named / already-consented sessions).

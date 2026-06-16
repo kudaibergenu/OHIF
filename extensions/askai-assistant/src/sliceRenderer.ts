@@ -22,6 +22,7 @@
  */
 import { Enums as CSEnums, getEnabledElementByViewportId, metaData } from '@cornerstonejs/core';
 import { getActiveViewportId } from './managers';
+import { captureAuthHeaders } from './captureAuth';
 
 type RenderSlicesAction = {
   type: 'render_slices';
@@ -122,11 +123,12 @@ async function handleRenderSlices(action: RenderSlicesAction): Promise<void> {
   const enabled = viewportId ? getEnabledElementByViewportId(viewportId) : null;
   const vp: any = enabled?.viewport;
 
-  const post = (body: Record<string, unknown>) => {
+  const post = async (body: Record<string, unknown>) => {
     const url = `${_resolveChainlitUrl()}/capture/slices`;
+    const auth = await captureAuthHeaders();
     return fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...auth },
       body: JSON.stringify({ request_id: action.request_id, ...body }),
     }).catch(e => {
       console.warn('[askai] /capture/slices POST failed:', e);
