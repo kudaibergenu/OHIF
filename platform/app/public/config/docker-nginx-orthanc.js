@@ -835,11 +835,11 @@ window.config = {
       if (isPro) return; // nothing to sell a Pro
       if (anon) {
         toast(
-          `You've used 80% of today's 300,000-token Guest limit. <a href="${url}/login">Sign in free</a> for 1,800,000/day.`
+          `You've used 80% of today's 300,000-token Guest limit. <a href="${url}/login">Sign in free</a> for 30,000,000/day.`
         );
       } else {
         toast(
-          `You've used 80% of today's 1,800,000-token limit. <a href="${url}/account">Upgrade to Pro</a> for ~7× more.`
+          `You've used 80% of today's 30,000,000-token limit. It resets at 00:00 UTC.`
         );
       }
     }
@@ -950,7 +950,7 @@ window.config = {
       const settings = $('.act.settings');
       const logout = $('.act.logout');
       if (anon) {
-        primary.textContent = askaiT('signInFreePerDay', { count: '1,800,000' });
+        primary.textContent = askaiT('signInFreePerDay', { count: '30,000,000' });
         primary.onclick = () => {
           gotoLogin();
         };
@@ -960,7 +960,7 @@ window.config = {
         if (pastDue) primary.textContent = askaiT('updatePayment');
         else if (canceling) primary.textContent = askaiT('resumePro');
         else if (isPro) primary.textContent = askaiT('manageSubscription');
-        else primary.textContent = askaiT('upgradeToPro');
+        else primary.textContent = askaiT('account');
         primary.onclick = () => {
           window.location.href = `${url}/account`;
         };
