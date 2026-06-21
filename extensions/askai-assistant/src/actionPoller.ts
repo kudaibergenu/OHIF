@@ -409,7 +409,7 @@ async function exportDicomSeries(action: ExportDicomSeriesAction) {
     let n = 0;
     for (const imageId of imageIds) {
       try {
-        const buf = await wadouri.loadFileRequest(imageId); // original P10 ArrayBuffer
+        const buf = await _loadInstanceBytes(imageId, wadouri); // original P10 ArrayBuffer
         fd.append('files', new Blob([buf], { type: 'application/dicom' }), `${n}.dcm`);
         n++;
       } catch (e) {
@@ -422,6 +422,21 @@ async function exportDicomSeries(action: ExportDicomSeriesAction) {
     console.warn('[askai] export_dicom_series failed', e);
     await post(newFd()); // unblock the backend poll even on unexpected failure
   }
+}
+
+// Fetch the ORIGINAL DICOM P10 bytes for an imageId, by scheme. Local uploads live in
+// cornerstone's file manager (dicomfile:) and use loadFileRequest; teaching samples and any
+// other URL-loaded instance come through as `wadouri:<url>` (or a bare http url) and MUST be
+// fetched from the URL — loadFileRequest only resolves the local File cache, so it throws
+// "parameter 1 is not of type 'Blob'" on a remote imageId (the 0/N-exported bug).
+async function _loadInstanceBytes(imageId: string, wadouri: any): Promise<ArrayBuffer> {
+  if (imageId.startsWith('wadouri:') || imageId.startsWith('http')) {
+    const url = imageId.startsWith('wadouri:') ? imageId.slice('wadouri:'.length) : imageId;
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error(`wadouri fetch failed: ${resp.status}`);
+    return await resp.arrayBuffer();
+  }
+  return await wadouri.loadFileRequest(imageId);
 }
 
 // commandsManager is captured in preRegistration (index.tsx → managers.ts). It
