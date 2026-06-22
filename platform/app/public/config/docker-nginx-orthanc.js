@@ -1229,19 +1229,19 @@ window.config = {
       shots: [
         {
           src: '/assets/onboarding/measure.webp',
-          alt: 'A brain MRI slice with a measurement line and a length label drawn on it',
+          alt: 'A chest X-ray with two dashed distance measurements (36.8 mm and 110 mm) drawn across it',
           cap: 'Automatic distance measurement',
           icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="4" y1="20" x2="20" y2="4"/><line x1="6.5" y1="15" x2="9" y2="17.5"/><line x1="11" y1="10.5" x2="13.5" y2="13"/><line x1="15.5" y1="6" x2="18" y2="8.5"/><circle cx="4" cy="20" r="1.4" fill="currentColor" stroke="none"/><circle cx="20" cy="4" r="1.4" fill="currentColor" stroke="none"/></svg>',
         },
         {
           src: '/assets/onboarding/angle.webp',
-          alt: 'Two lines meeting at a vertex on an MRI with an angle value in degrees',
+          alt: 'A lumbar spine MRI with two lines meeting at a vertex showing a 33.7° angle',
           cap: 'Automatic angle measurement',
           icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19h16"/><path d="M4 19 19 6"/><path d="M10.5 19a6.5 6.5 0 0 1 2-4.7"/></svg>',
         },
         {
           src: '/assets/onboarding/volume.webp',
-          alt: 'A segmented organ on an MRI shaded as a volume with its size in millilitres',
+          alt: 'A brain CT slice with the ventricles segmented in multiple colors',
           cap: 'Automatic volume measurement',
           icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7.5 4.2v9.6L12 21l-7.5-4.2V7.2z"/><path d="M4.5 7.2 12 11.4l7.5-4.2"/><path d="M12 11.4V21"/></svg>',
           info:
@@ -1265,12 +1265,8 @@ window.config = {
         'the slices and text you send are processed by third-party AI in the US (Google Gemini; Replicate for segmentation).',
       trustLink: 'What this means →',
       cont: 'Continue',
-      go: 'Try it on a Brain MRI sample →',
-      goHelp: 'Loads a sample brain MRI and measures the Evans index — a draft you’d refine.',
       hint: 'Press Esc or click outside to explore on your own.',
       help: 'What can SaigaLab do here?',
-      pending:
-        'The sample demo is being finalised. Drag a DICOM onto the viewer to start with your own study — de-identified data only.',
     };
 
     const style = document.createElement('style');
@@ -1307,9 +1303,6 @@ window.config = {
       #${NS} .cont{display:block;width:100%;padding:13px;border:0;border-radius:9px;
         background:#2563eb;color:#fff;font-size:15px;font-weight:700;cursor:pointer}
       #${NS} .cont:hover{background:#3b82f6}
-      #${NS} .go{display:block;width:100%;margin-top:9px;padding:11px;border:1px solid #2f4570;
-        border-radius:9px;background:transparent;color:#cdd9f0;font-size:14px;font-weight:600;cursor:pointer}
-      #${NS} .go:hover{border-color:#3b82f6;color:#fff;background:rgba(37,99,235,.08)}
       #${NS} .infowrap{position:relative;display:inline-flex;align-items:center}
       #${NS} .infobtn{display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;
         margin-left:5px;border-radius:50%;border:1px solid #3a4d74;background:transparent;color:#9fb2d6;
@@ -1324,7 +1317,6 @@ window.config = {
       #${NS} .infopop li{margin:1px 0}
       #${NS} .infopop b{color:#dde7fb}
       #${NS} .infopop .muted{display:block;margin-top:7px;color:#7e93ba}
-      #${NS} .gohelp{margin:8px 0 0;text-align:center;font-size:12px;color:#6c80a6}
       #${NS} .hint{margin:10px 0 0;text-align:center;font-size:11px;color:#52658a}
       #${NS}-help{position:fixed;left:16px;bottom:16px;z-index:2147483000;width:34px;height:34px;
         border-radius:50%;background:#16233f;border:1px solid #2f4570;color:#cdd9f0;
@@ -1344,42 +1336,6 @@ window.config = {
     help.setAttribute('aria-label', STR.help);
     help.onclick = () => openCard();
     document.body.appendChild(help);
-
-    function onbToast(msg) {
-      let wrap = document.getElementById('askai-chip-toasts');
-      if (!wrap) {
-        wrap = document.createElement('div');
-        wrap.id = 'askai-chip-toasts';
-        document.body.appendChild(wrap);
-      }
-      const t = document.createElement('div');
-      t.className = 'toast';
-      t.innerHTML = `<span class="x">×</span>${msg}`;
-      t.querySelector('.x').onclick = () => t.remove();
-      wrap.appendChild(t);
-      setTimeout(() => t.remove(), 9000);
-    }
-
-    // The single CTA: navigate to the hosted sample if the backend reports one,
-    // else fall back gracefully (never a dead/404 button). Lights up automatically
-    // once a sample is hosted and the backend exposes /api/sample.
-    async function triggerDemo(closeFn) {
-      markSeen();
-      try {
-        const r = await fetch(`${url}/api/sample?key=brain_mri_evans`, { credentials: 'include' });
-        if (r.ok) {
-          const d = await r.json();
-          if (d && d.ready && (d.path || d.viewer_url)) {
-            window.location.href = d.path || d.viewer_url;
-            return;
-          }
-        }
-      } catch (_) {
-        /* fall through to graceful fallback */
-      }
-      if (closeFn) closeFn();
-      onbToast(STR.pending);
-    }
 
     let lastFocus = null;
     function openCard() {
@@ -1416,8 +1372,6 @@ window.config = {
           <div class="callout">${STR.callout}</div>
           <p class="trust">${STR.trust} <a href="${url}/privacy" target="_blank" rel="noopener">${STR.trustLink}</a></p>
           <button class="cont" type="button">${STR.cont}</button>
-          <button class="go" type="button">${STR.go}</button>
-          <p class="gohelp">${STR.goHelp}</p>
           <p class="hint">${STR.hint}</p>
         </div>`;
       document.body.appendChild(back);
@@ -1457,7 +1411,6 @@ window.config = {
         if (e.target === back) close();
       });
       back.querySelector('.cont').onclick = close;
-      back.querySelector('.go').onclick = () => triggerDemo(close);
       // Info popovers (e.g. "what can volume segmentation cover?"). Toggle in
       // place; never re-arms the once flag.
       back.querySelectorAll('.infobtn').forEach((btn) => {
