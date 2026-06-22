@@ -198,6 +198,7 @@ window.config = {
           "proEnds": "Pro · ends {{date}}",
           "guestTokensPerDay": "Guest · {{count}} tokens/day",
           "tokensToday": "{{used}} / {{cap}} tokens today",
+          "segsToday": "{{used}} / {{cap}} segmentations today",
           "resetsAt": "Resets 00:00 UTC (in {{time}})",
           "accountSettings": "Account settings",
           "signOut": "Sign out",
@@ -220,6 +221,7 @@ window.config = {
           "proEnds": "Pro · termina {{date}}",
           "guestTokensPerDay": "Invitado · {{count}} tokens/día",
           "tokensToday": "{{used}} / {{cap}} tokens hoy",
+          "segsToday": "{{used}} / {{cap}} segmentaciones hoy",
           "resetsAt": "Se reinicia a las 00:00 UTC (en {{time}})",
           "accountSettings": "Configuración de cuenta",
           "signOut": "Cerrar sesión",
@@ -242,6 +244,7 @@ window.config = {
           "proEnds": "Pro · se termine le {{date}}",
           "guestTokensPerDay": "Invité · {{count}} jetons/jour",
           "tokensToday": "{{used}} / {{cap}} jetons aujourd'hui",
+          "segsToday": "{{used}} / {{cap}} segmentations aujourd'hui",
           "resetsAt": "Réinitialisation à 00:00 UTC (dans {{time}})",
           "accountSettings": "Paramètres du compte",
           "signOut": "Se déconnecter",
@@ -264,6 +267,7 @@ window.config = {
           "proEnds": "Pro · endet {{date}}",
           "guestTokensPerDay": "Gast · {{count}} Tokens/Tag",
           "tokensToday": "{{used}} / {{cap}} Tokens heute",
+          "segsToday": "{{used}} / {{cap}} Segmentierungen heute",
           "resetsAt": "Reset 00:00 UTC (in {{time}})",
           "accountSettings": "Kontoeinstellungen",
           "signOut": "Abmelden",
@@ -286,6 +290,7 @@ window.config = {
           "proEnds": "Pro · eindigt {{date}}",
           "guestTokensPerDay": "Gast · {{count}} tokens/dag",
           "tokensToday": "{{used}} / {{cap}} tokens vandaag",
+          "segsToday": "{{used}} / {{cap}} segmentaties vandaag",
           "resetsAt": "Reset om 00:00 UTC (over {{time}})",
           "accountSettings": "Accountinstellingen",
           "signOut": "Uitloggen",
@@ -308,6 +313,7 @@ window.config = {
           "proEnds": "Pro · termina em {{date}}",
           "guestTokensPerDay": "Convidado · {{count}} tokens/dia",
           "tokensToday": "{{used}} / {{cap}} tokens hoje",
+          "segsToday": "{{used}} / {{cap}} segmentações hoje",
           "resetsAt": "Redefine às 00:00 UTC (em {{time}})",
           "accountSettings": "Configurações da conta",
           "signOut": "Sair",
@@ -330,6 +336,7 @@ window.config = {
           "proEnds": "Pro · до {{date}}",
           "guestTokensPerDay": "Гость · {{count}} токенов/день",
           "tokensToday": "{{used}} / {{cap}} токенов сегодня",
+          "segsToday": "{{used}} / {{cap}} сегментаций сегодня",
           "resetsAt": "Сброс в 00:00 UTC (через {{time}})",
           "accountSettings": "Настройки аккаунта",
           "signOut": "Выйти",
@@ -352,6 +359,7 @@ window.config = {
           "proEnds": "Pro · {{date}} tarihinde bitiyor",
           "guestTokensPerDay": "Misafir · {{count}} jeton/gün",
           "tokensToday": "Bugün {{used}} / {{cap}} jeton",
+          "segsToday": "Bugün {{used}} / {{cap}} segmentasyon",
           "resetsAt": "00:00 UTC'de sıfırlanır ({{time}} içinde)",
           "accountSettings": "Hesap ayarları",
           "signOut": "Oturumu kapat",
@@ -374,6 +382,7 @@ window.config = {
           "proEnds": "Pro · kết thúc {{date}}",
           "guestTokensPerDay": "Khách · {{count}} token/ngày",
           "tokensToday": "{{used}} / {{cap}} token hôm nay",
+          "segsToday": "{{used}} / {{cap}} phân đoạn hôm nay",
           "resetsAt": "Đặt lại 00:00 UTC (sau {{time}})",
           "accountSettings": "Cài đặt tài khoản",
           "signOut": "Đăng xuất",
@@ -396,6 +405,7 @@ window.config = {
           "proEnds": "Pro · {{date}} に終了",
           "guestTokensPerDay": "ゲスト · 1日 {{count}} トークン",
           "tokensToday": "本日 {{used}} / {{cap}} トークン",
+          "segsToday": "本日 {{used}} / {{cap}} セグメンテーション",
           "resetsAt": "00:00 UTC にリセット（あと {{time}}）",
           "accountSettings": "アカウント設定",
           "signOut": "ログアウト",
@@ -418,6 +428,7 @@ window.config = {
           "proEnds": "Pro · {{date}} 到期",
           "guestTokensPerDay": "访客 · 每日 {{count}} 个令牌",
           "tokensToday": "今日令牌 {{used}} / {{cap}}",
+          "segsToday": "今日分割 {{used}} / {{cap}}",
           "resetsAt": "UTC 00:00 重置（{{time}}后）",
           "accountSettings": "账户设置",
           "signOut": "退出登录",
@@ -440,6 +451,7 @@ window.config = {
           "proEnds": "Pro · تنتهي {{date}}",
           "guestTokensPerDay": "ضيف · {{count}} رمز/يوم",
           "tokensToday": "{{used}} / {{cap}} رمز اليوم",
+          "segsToday": "{{used}} / {{cap}} تجزئة اليوم",
           "resetsAt": "يُعاد الضبط 00:00 UTC (خلال {{time}})",
           "accountSettings": "إعدادات الحساب",
           "signOut": "تسجيل الخروج",
@@ -613,7 +625,9 @@ window.config = {
       #${NS} .m-bar{height:8px;background:#1f2c45;border-radius:6px;overflow:hidden;margin:6px 0}
       #${NS} .m-bar>i{display:block;height:100%;width:0;background:#2563eb}
       #${NS} .m-usage{font-size:14px;color:#cdd9f0}
-      #${NS} .m-reset{font-size:12px;color:#6c80a6;margin:2px 0 10px}
+      #${NS} .m-reset{font-size:12px;color:#6c80a6;margin:2px 0 0}
+      #${NS} .m-segs{font-size:13px;color:#9fb2d4;margin:8px 0 10px;
+        padding-top:8px;border-top:1px solid #1f2c45}
       #${NS} button.act{width:100%;padding:10px;border:0;border-radius:8px;cursor:pointer;
         font-weight:600;font-size:14px;background:#2563eb;color:#fff;margin-top:6px}
       #${NS} button.act.sec{background:#1f2c45;color:#e8eefc;font-weight:500}
@@ -656,6 +670,7 @@ window.config = {
         <div class="m-id"></div><div class="m-sub"></div>
         <div class="m-bar"><i></i></div>
         <div class="m-usage"></div><div class="m-reset"></div>
+        <div class="m-segs"></div>
         <button class="act primary"></button>
         <button class="act sec settings" style="display:none">${askaiT('accountSettings')}</button>
         <button class="act sec logout" style="display:none">${askaiT('signOut')}</button>
@@ -849,6 +864,13 @@ window.config = {
       $('.m-bar>i').style.background = color;
       $('.m-usage').textContent = askaiT('tokensToday', { used: fmt(used), cap: fmt(cap) });
       $('.m-reset').textContent = askaiT('resetsAt', { time: untilUtcMidnight() });
+
+      // Segmentations are a SEPARATE daily quota (heavy GPU runs), tracked by
+      // /api/me as segmentations_used_today / segmentation_cap. Shown as a plain
+      // second stat — like the token line, we don't special-case admin/unlimited.
+      const segUsed = d.segmentations_used_today || 0;
+      const segCap = d.segmentation_cap || 0;
+      $('.m-segs').textContent = askaiT('segsToday', { used: fmt(segUsed), cap: fmt(segCap) });
 
       // Guest gets an inline "Sign in" pill on the chip itself (one click → login),
       // so the call-to-action is visible without opening the menu.
