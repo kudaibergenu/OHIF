@@ -51,7 +51,7 @@ type LocalProps = {
 
 function Local({ modePath }: LocalProps) {
   const { servicesManager } = useSystem();
-  const { customizationService } = servicesManager.services;
+  const { customizationService, uiNotificationService } = servicesManager.services;
   const navigate = useNavigate();
   const dropzoneRef = useRef();
   const [dropInitiated, setDropInitiated] = React.useState(false);
@@ -80,7 +80,16 @@ function Local({ modePath }: LocalProps) {
   );
 
   const onDrop = async acceptedFiles => {
-    const studies = await filesToStudies(acceptedFiles, dataSource);
+    const { studyUIDs: studies, warnings } = await filesToStudies(acceptedFiles, dataSource);
+
+    if (warnings?.length) {
+      uiNotificationService.show({
+        title: 'Some files were converted',
+        message: warnings.join(' • '),
+        type: 'warning',
+        duration: 8000,
+      });
+    }
 
     const query = new URLSearchParams();
 
