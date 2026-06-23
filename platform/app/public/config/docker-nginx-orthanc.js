@@ -19,6 +19,11 @@ window.config = {
     maxNumPrefetchRequests: 10,
     order: 'closest',
   },
+  // Hosted sample study (dicomjson manifest) — mirrors prod saigalab.js so dev shows
+  // the same teaching study row. @ohif/extension-askai-assistant fetches it in
+  // preRegistration and injects it into DicomMetadataStore (no DICOMweb server needed).
+  sampleStudyManifestUrl:
+    'https://storage.googleapis.com/saigalab-7d1d7.firebasestorage.app/teaching/brain-mri/manifest.json',
   // Default to local upload (matches prod saigalab.js) so the worklist doesn't
   // query Orthanc on landing — dev needs no PACS for upload.
   // Orthanc is still selectable as a data source for anyone running it on :8042.

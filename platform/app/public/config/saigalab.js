@@ -16,6 +16,12 @@ window.config = {
   showCPUFallbackMessage: true,
   showLoadingIndicator: true,
   strictZSpacingForVolumeViewport: true,
+  // Hosted sample study (dicomjson manifest). @ohif/extension-askai-assistant
+  // fetches this in preRegistration and injects it into DicomMetadataStore so it
+  // shows as a Study List row (via the dicomlocal source) and opens when clicked
+  // — no DICOMweb server, works on static Firebase Hosting.
+  sampleStudyManifestUrl:
+    'https://storage.googleapis.com/saigalab-7d1d7.firebasestorage.app/teaching/brain-mri/manifest.json',
   defaultDataSourceName: 'dicomlocal',
   dataSources: [
     {
