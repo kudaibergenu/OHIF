@@ -20,15 +20,9 @@ window.config = {
     order: 'closest',
   },
   // Default to local upload (matches prod saigalab.js) so the worklist doesn't
-  // query Orthanc on landing — dev needs no PACS for upload / sample-study flows.
+  // query Orthanc on landing — dev needs no PACS for upload.
   // Orthanc is still selectable as a data source for anyone running it on :8042.
   defaultDataSourceName: 'dicomlocal',
-  // Hosted sample study (dicomjson manifest) — mirrors config/saigalab.js.
-  // @ohif/extension-askai-assistant injects it into DicomMetadataStore in
-  // preRegistration so it shows as a Study List row + opens. The bucket CORS
-  // allows http://localhost:3000, so dev uses the same hosted manifest.
-  sampleStudyManifestUrl:
-    'https://storage.googleapis.com/saigalab-7d1d7.firebasestorage.app/teaching/brain-mri/manifest.json',
   dataSources: [
     {
       namespace: '@ohif/extension-default.dataSourcesModule.dicomweb',
@@ -563,6 +557,11 @@ window.config = {
     return s;
   }
 
+  // NOTE: this dev config intentionally LAGS prod (saigalab.js) on auth. saigalab.js carries the
+  // unified-auth fix (in-page sign-in + onAuthStateChanged reconciler) for the cross-origin
+  // viewer/chat uid split; dev is single-origin (chat + OHIF on the same host) so that bug cannot
+  // occur here and the fix is unnecessary. Do NOT "resync" this block from saigalab.js — that would
+  // drag the prod fix back out. See docs/UNIFY-VIEWER-CHAT-AUTH.md.
   // Sign-in navigates the whole page to the chat origin's /login, which then
   // redirects to APP_ORIGIN — dropping the loaded study. Carry the current
   // viewer URL along as ?next= so a guest who signs in lands back on the same
@@ -570,23 +569,6 @@ window.config = {
   function gotoLogin() {
     window.location.href = `${url}/login?next=${encodeURIComponent(window.location.href)}`;
   }
-
-  // Backend → page: the one-click sample demo. The chat fires
-  // cl.CopilotFunction("loadStudy", {url}); we ack immediately, then navigate the
-  // viewer to the dicomjson deep-link (a full reload). After reload the chat's
-  // on_chat_start resumes the task via the seeded intent. (Verify the
-  // `/viewer/dicomjson` route + that the manifest is a {"studies":[...]} JSON.)
-  window.addEventListener('chainlit-call-fn', (e) => {
-    const d = (e && e.detail) || {};
-    if (d.name === 'loadStudy' && d.args && (d.args.path || d.args.url)) {
-      try { d.callback && d.callback('navigating'); } catch (_) {}
-      // `path` is a ready-made relative viewer route; `url` is the legacy
-      // dicomjson-manifest form. Same-origin nav (full reload) — on_chat_start
-      // resumes the task via the seeded intent.
-      window.location.href =
-        d.args.path || '/viewer/dicomjson?url=' + encodeURIComponent(d.args.url);
-    }
-  });
 
   // Public Firebase web config for the saigalab project (safe to embed; mirrors
   // the values the server-rendered /login page uses).

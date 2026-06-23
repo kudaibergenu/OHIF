@@ -17,12 +17,6 @@ window.config = {
   showLoadingIndicator: true,
   strictZSpacingForVolumeViewport: true,
   defaultDataSourceName: 'dicomlocal',
-  // Hosted sample study (dicomjson manifest). @ohif/extension-askai-assistant
-  // fetches this in preRegistration and injects it into DicomMetadataStore so it
-  // shows as a Study List row (via the dicomlocal source) and opens when clicked
-  // — no DICOMweb server, works on static Firebase Hosting.
-  sampleStudyManifestUrl:
-    'https://storage.googleapis.com/saigalab-7d1d7.firebasestorage.app/teaching/brain-mri/manifest.json',
   dataSources: [
     {
       namespace: '@ohif/extension-default.dataSourcesModule.dicomlocal',
@@ -114,6 +108,11 @@ window.config = {
 (function injectChainlitCopilot() {
   const DEFAULT_URL = 'https://chat.saigalab.com';
   const url = (window.localStorage?.getItem('askai.chainlitUrl') || DEFAULT_URL).replace(/\/$/, '');
+
+  // Unify viewer + chat identity on the OHIF-page Firebase user so signing into the chat
+  // can't orphan the viewport bus (see docs/UNIFY-VIEWER-CHAT-AUTH.md). Default ON; per-browser
+  // revert: localStorage['askai.unifiedAuth']='0'; global kill: flip '1'→'0' + redeploy hosting.
+  const UNIFIED_AUTH = (window.localStorage?.getItem('askai.unifiedAuth') ?? '1') !== '0';
   // Publish the resolved URL synchronously so the askai-assistant extension
   // (viewportTracker / actionPoller / sliceRenderer start at preRegistration,
   // before this async widget script loads) pushes state to the same backend.
@@ -480,26 +479,45 @@ window.config = {
   // redirects to APP_ORIGIN — dropping the loaded study. Carry the current
   // viewer URL along as ?next= so a guest who signs in lands back on the same
   // study. (Chat history is NOT preserved — it lives only in the session.)
-  function gotoLogin() {
-    window.location.href = `${url}/login?next=${encodeURIComponent(window.location.href)}`;
-  }
-
-  // Backend → page: the one-click sample demo. The chat fires
-  // cl.CopilotFunction("loadStudy", {url}); we ack immediately, then navigate the
-  // viewer to the dicomjson deep-link (a full reload). After reload the chat's
-  // on_chat_start resumes the task via the seeded intent. (Verify the
-  // `/viewer/dicomjson` route + that the manifest is a {"studies":[...]} JSON.)
-  window.addEventListener('chainlit-call-fn', (e) => {
-    const d = (e && e.detail) || {};
-    if (d.name === 'loadStudy' && d.args && (d.args.path || d.args.url)) {
-      try { d.callback && d.callback('navigating'); } catch (_) {}
-      // `path` is a ready-made relative viewer route; `url` is the legacy
-      // dicomjson-manifest form. Same-origin nav (full reload) — on_chat_start
-      // resumes the task via the seeded intent.
-      window.location.href =
-        d.args.path || '/viewer/dicomjson?url=' + encodeURIComponent(d.args.url);
+  // Sign in on the OHIF-page Firebase (SAME origin as the viewer-bus token) so both keys
+  // follow one user. Anonymous→named links in place (uid preserved → bus key + threads/usage
+  // survive). Flag OFF or popup-blocked falls back to same-origin redirect, then cross-origin /login.
+  async function gotoLogin() {
+    if (!UNIFIED_AUTH) {
+      window.location.href = `${url}/login?next=${encodeURIComponent(window.location.href)}`;
+      return;
     }
-  });
+    try {
+      const { auth, authMod } = await _firebase();
+      const provider = new authMod.GoogleAuthProvider();
+      const cur = auth.currentUser;
+      if (cur && cur.isAnonymous) {
+        try {
+          await authMod.linkWithPopup(cur, provider);             // upgrade guest in place → uid kept
+        } catch (e) {
+          if (e?.code === 'auth/credential-already-in-use' || e?.code === 'auth/email-already-in-use') {
+            await authMod.signInWithPopup(auth, provider);         // that Google id already has its own account
+          } else { throw e; }
+        }
+      } else {
+        await authMod.signInWithPopup(auth, provider);
+      }
+      // onAuthStateChanged → reconcileSession() re-pins the cookie + remounts.
+    } catch (e) {
+      if (e?.code === 'auth/popup-closed-by-user' || e?.code === 'auth/cancelled-popup-request') return;
+      if (e?.code === 'auth/popup-blocked' || e?.code === 'auth/operation-not-supported-in-this-environment') {
+        try {
+          const { auth, authMod } = await _firebase();
+          await authMod.signInWithRedirect(auth, new authMod.GoogleAuthProvider());
+          return;
+        } catch (_) {
+          window.location.href = `${url}/login?next=${encodeURIComponent(window.location.href)}`;
+          return;
+        }
+      }
+      console.warn('[askai] in-page sign-in failed', e);
+    }
+  }
 
   // Public Firebase web config for the saigalab project (safe to embed; mirrors
   // the values the server-rendered /login page uses).
@@ -528,6 +546,13 @@ window.config = {
     return _fbPromise;
   }
 
+  // Identity-reconcile state (set by reconcileSession below; seeded at bootstrap before mount).
+  // The token getter is gated on _lastReconciledUid so /capture/* is never signed with a uid the
+  // chat cookie hasn't been re-pinned to yet — which would push viewport data into a bus the chat
+  // can't read (the reverse of the original split).
+  let _lastReconciledUid = null;
+  let _reconciling = false;
+
   // Expose a Firebase ID-token getter for the askai-assistant extension's
   // /capture/* calls. The backend verifies this token to a uid and keys every
   // viewer channel (actions + viewport screenshots) by it, so two concurrent
@@ -537,7 +562,14 @@ window.config = {
   window.__ASKAI_GET_ID_TOKEN__ = async () => {
     try {
       const { auth } = await _firebase();
-      return auth.currentUser ? await auth.currentUser.getIdToken() : null;
+      const u = auth.currentUser;
+      if (!u) return null;
+      // Don't sign /capture/* with a uid the chat cookie hasn't been re-pinned to yet, or the
+      // viewer would push into a bus the chat can't read. The extension just skips this tick and
+      // retries — reconcile lands in well under a second. (Guests: _lastReconciledUid is seeded to
+      // the anon uid at bootstrap, so the getter is never gated for them.)
+      if (UNIFIED_AUTH && _lastReconciledUid !== null && u.uid !== _lastReconciledUid) return null;
+      return await u.getIdToken();
     } catch (_) {
       return null;
     }
@@ -565,12 +597,86 @@ window.config = {
   async function ensureSession() {
     const me = await fetch(`${url}/api/me`, { credentials: 'include' });
     if (me.ok) {
+      if (UNIFIED_AUTH) {
+        try {
+          const info = await me.clone().json();
+          const named = info && info.email && !info.is_anonymous;
+          const { auth } = await _firebase();
+          const cur = auth.currentUser;
+          if (named && (!cur || cur.isAnonymous)) {
+            // Cookie is a named account but the OHIF-page Firebase is anon/null → keys diverged
+            // (came back from a cross-origin /login, or a chat-stream [Sign in](…/login) link).
+            // Flag it so the chip keeps a "Sign in" pill → one click runs the in-page flow and
+            // re-pins both keys. We can't move the named token across origins, so this is the heal.
+            window.__ASKAI_AUTH_MISMATCH__ = true;
+            console.warn('[askai] viewer/chat identity diverged — click Sign in to reconnect the viewer');
+          }
+        } catch (_) { /* best-effort self-heal */ }
+      }
       return;
     }
     if (me.status !== 401) {
       console.warn(`[askai] /api/me returned unexpected status ${me.status}`);
     }
     await establishAnonymousSession();
+  }
+
+  // Tear down + re-handshake the Copilot under a new cookie uid (the chat reads its uid once
+  // from the JWT at websocket connect, so a uid change requires a remount to take effect).
+  function remountChat() {
+    try { if (typeof window.unmountChainlitWidget === 'function') window.unmountChainlitWidget(); } catch (_) {}
+    try {
+      window.mountChainlitWidget(
+        LANG_DEF.chat
+          ? { chainlitServer: url, opened: true, displayMode: 'sidebar', language: LANG_DEF.chat }
+          : { chainlitServer: url, opened: true, displayMode: 'sidebar' }
+      );
+    } catch (e) { console.warn('[askai] chat remount failed', e); }
+  }
+
+  // Force the Chainlit cookie uid to equal the current Firebase user, so the viewer-bus key and
+  // the chat key are always minted from the SAME user. uid-deduped + in-flight-guarded so token
+  // refreshes (which don't fire onAuthStateChanged) and the initial mount never thrash.
+  async function reconcileSession(user) {
+    if (!UNIFIED_AUTH || !user || _reconciling || user.uid === _lastReconciledUid) return;
+    _reconciling = true;
+    try {
+      const idToken = await user.getIdToken();
+      const r = await fetch(`${url}/api/session`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ idToken }),
+      });
+      if (r.status === 403) {
+        // Brand-new named account with no doc → backend requires Terms acceptance before it mints
+        // the cookie. Rare: guests upgrade via linkWithPopup → existing doc → no 403. Send them
+        // through the hosted /login (which collects consent); the token-getter gate keeps the
+        // viewer from signing /capture/* with this not-yet-reconciled uid meanwhile.
+        window.location.href = `${url}/login?next=${encodeURIComponent(window.location.href)}`;
+        return;
+      }
+      if (r.ok) {
+        const prev = _lastReconciledUid;
+        _lastReconciledUid = user.uid;
+        if (prev !== null && prev !== user.uid) remountChat();
+      } else {
+        console.warn('[askai] reconcileSession non-ok', r.status);
+      }
+    } catch (e) {
+      console.warn('[askai] reconcileSession failed', e);
+    } finally {
+      _reconciling = false;
+    }
+  }
+
+  function startAuthReconciler() {
+    if (!UNIFIED_AUTH) return;
+    _firebase()
+      .then(({ auth, authMod }) => {
+        authMod.onAuthStateChanged(auth, (u) => { if (u) reconcileSession(u); });
+      })
+      .catch(() => {});
   }
 
   // ─── Account chip (UI only; all auth/billing stays on the Chainlit backend) ──
@@ -875,7 +981,9 @@ window.config = {
       // Guest gets an inline "Sign in" pill on the chip itself (one click → login),
       // so the call-to-action is visible without opening the menu.
       const cta = $('.cta');
-      cta.style.display = anon ? 'flex' : 'none';
+      // Also surface the Sign-in pill when viewer/chat identity diverged (ensureSession self-heal):
+      // the cookie may be named (anon=false) yet the viewer is orphaned — one click re-pins both.
+      cta.style.display = (anon || window.__ASKAI_AUTH_MISMATCH__) ? 'flex' : 'none';
       cta.onclick = (e) => {
         e.stopPropagation();
         gotoLogin();
@@ -1355,7 +1463,10 @@ window.config = {
     // (e.g. the Anonymous provider is disabled), fall back to the login page so
     // the user never lands on a dead, unauthenticated screen.
     ensureSession()
-      .then(() => {
+      .then(async () => {
+        // Seed the reconcile dedupe from the current user BEFORE mount so onAuthStateChanged's
+        // initial fire doesn't double-reconcile, and so a guest's token getter is never gated.
+        try { const { auth } = await _firebase(); _lastReconciledUid = auth.currentUser?.uid ?? null; } catch (_) {}
         window.mountChainlitWidget(
           LANG_DEF.chat
             ? { chainlitServer: url, opened: true, displayMode: 'sidebar', language: LANG_DEF.chat }
@@ -1365,6 +1476,8 @@ window.config = {
         // Resolve the guest recording-consent gate first; the onboarding card follows
         // once it's answered (or skipped for named / already-consented sessions).
         mountGuestConsent(mountOnboarding);
+        // Keep the Chainlit cookie uid pinned to the OHIF-page Firebase user from here on.
+        startAuthReconciler();
       })
       .catch((e) => {
         console.warn('[askai] could not establish a session, sending to login:', e);
