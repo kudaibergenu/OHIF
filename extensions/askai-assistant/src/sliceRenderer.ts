@@ -20,7 +20,13 @@
  * created without preserveDrawingBuffer). So each capture rides a one-shot
  * IMAGE_RENDERED listener that we arm right before moving the stack.
  */
-import { Enums as CSEnums, getEnabledElementByViewportId, metaData } from '@cornerstonejs/core';
+import {
+  Enums as CSEnums,
+  getEnabledElementByViewportId,
+  getEnabledElements,
+  metaData,
+  utilities as csUtils,
+} from '@cornerstonejs/core';
 import { getActiveViewportId } from './managers';
 import { captureAuthHeaders } from './captureAuth';
 
@@ -107,10 +113,10 @@ function _captureSliceAt(vp: any, targetIdx: number): Promise<string | null> {
     el.addEventListener(CSEnums.Events.IMAGE_RENDERED, onRendered as EventListener);
     const timer = setTimeout(() => finish(null), CAPTURE_TIMEOUT_MS);
 
-    // setImageIdIndex triggers a render (→ IMAGE_RENDERED → capture). When the
-    // target equals the current index it may not re-render, so force one if the
-    // promise settled before our listener fired.
-    Promise.resolve(vp.setImageIdIndex(targetIdx))
+    // The move triggers a render (→ IMAGE_RENDERED → capture). When the target
+    // equals the current index it may not re-render, so force one if the promise
+    // settled before our listener fired.
+    _navigateToSlice(vp, targetIdx)
       .then(() => {
         if (!done && typeof vp.render === 'function') vp.render();
       })
@@ -118,10 +124,59 @@ function _captureSliceAt(vp: any, targetIdx: number): Promise<string | null> {
   });
 }
 
+/**
+ * Move EITHER viewport type to a 0-based slice index. Stack viewports expose
+ * setImageIdIndex; volume / MPR viewports don't, so we drive them with jumpToSlice
+ * (it scrolls the camera to that slice of the current view plane). The render it
+ * triggers (→ IMAGE_RENDERED) is what _captureSliceAt awaits.
+ */
+function _navigateToSlice(vp: any, idx: number): Promise<unknown> {
+  if (typeof vp.setImageIdIndex === 'function') {
+    return Promise.resolve(vp.setImageIdIndex(idx));
+  }
+  return Promise.resolve(csUtils.jumpToSlice(vp.element, { imageIndex: idx }));
+}
+
+/** Current 0-based slice index for either viewport type. */
+function _currentSliceIndex(vp: any): number {
+  if (typeof vp.getCurrentImageIdIndex === 'function') return vp.getCurrentImageIdIndex();
+  if (typeof vp.getSliceIndex === 'function') return vp.getSliceIndex();
+  return 0;
+}
+
+/**
+ * Find a viewport we can render slices from. Prefer the backend-specified id, then the
+ * active viewport, then ANY enabled viewport holding an image stack. The cached id can go
+ * stale (re-layout) or point at a non-image viewport, and OHIF may render a series as a
+ * VOLUME viewport (no setImageIdIndex) — both used to surface as the dead-end
+ * "No stack viewport to render from". A viewport qualifies if it exposes its imageIds and
+ * can be navigated: a stack via setImageIdIndex, a volume via jumpToSlice on its element.
+ */
+function _resolveRenderViewport(action: RenderSlicesAction): any {
+  const canRender = (vp: any) =>
+    vp &&
+    typeof vp.getImageIds === 'function' &&
+    (vp.getImageIds() || []).length > 0 &&
+    (typeof vp.setImageIdIndex === 'function' ||
+      (vp.element && typeof csUtils.jumpToSlice === 'function'));
+
+  for (const id of [action.viewportId, getActiveViewportId()]) {
+    if (!id) continue;
+    const vp = getEnabledElementByViewportId(id)?.viewport;
+    if (canRender(vp)) return vp;
+  }
+  try {
+    for (const ee of getEnabledElements() as any[]) {
+      if (canRender(ee?.viewport)) return ee.viewport;
+    }
+  } catch {
+    /* ignore — fall through to null */
+  }
+  return null;
+}
+
 async function handleRenderSlices(action: RenderSlicesAction): Promise<void> {
-  const viewportId = action.viewportId || getActiveViewportId();
-  const enabled = viewportId ? getEnabledElementByViewportId(viewportId) : null;
-  const vp: any = enabled?.viewport;
+  const vp: any = _resolveRenderViewport(action);
 
   const post = async (body: Record<string, unknown>) => {
     const url = `${_resolveChainlitUrl()}/capture/slices`;
@@ -135,15 +190,13 @@ async function handleRenderSlices(action: RenderSlicesAction): Promise<void> {
     });
   };
 
-  if (!vp || typeof vp.setImageIdIndex !== 'function' || typeof vp.getImageIds !== 'function') {
+  if (!vp) {
     await post({
       total: 0,
       burned_in: false,
       out_of_range: [],
       slices: {},
-      error:
-        'No stack viewport to render from. Open a study in the viewer (a stack ' +
-        'viewport), then retry.',
+      error: 'No image viewport to render from. Open a study in the viewer, then retry.',
     });
     return;
   }
@@ -180,8 +233,7 @@ async function handleRenderSlices(action: RenderSlicesAction): Promise<void> {
     outOfRange = wanted.filter(n => n < 1 || n > total);
   }
 
-  const startIdx =
-    typeof vp.getCurrentImageIdIndex === 'function' ? vp.getCurrentImageIdIndex() : 0;
+  const startIdx = _currentSliceIndex(vp);
 
   const slices: Record<number, string> = {};
   try {
@@ -192,7 +244,7 @@ async function handleRenderSlices(action: RenderSlicesAction): Promise<void> {
   } finally {
     // Restore the radiologist's original slice regardless of outcome.
     try {
-      await Promise.resolve(vp.setImageIdIndex(startIdx));
+      await _navigateToSlice(vp, startIdx);
     } catch {
       /* best-effort restore */
     }

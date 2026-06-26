@@ -90,11 +90,28 @@ function _extractState(vp: any): ViewportState {
       if (Number.isFinite(idx) && total > 0) slice = { index: idx, total };
     }
 
+    // Modality from Cornerstone's already-parsed DICOM metadata (generalSeriesModule). The
+    // backend's segmentation router needs this to pick CT vs MR models; sending null made it
+    // silently treat every study as CT. Fall back to the first imageId for volume viewports,
+    // whose getCurrentImageId may be absent.
+    let modality: string | null = null;
+    try {
+      const modalityImageId =
+        imageId ||
+        (typeof vp?.getImageIds === 'function' ? (vp.getImageIds() || [])[0] : null);
+      if (modalityImageId) {
+        const gsm: any = metaData.get('generalSeriesModule', modalityImageId);
+        modality = gsm?.modality ?? null;
+      }
+    } catch {
+      modality = null;
+    }
+
     return {
       imageId: imageId ?? null,
       viewportId: vp?.id ?? null,
       voi,
-      modality: null, // populated server-side from the DICOM if needed
+      modality,
       slice,
       burnedIn: _readBurnedIn(imageId),
       updatedAt: Date.now(),
