@@ -117,6 +117,17 @@ type ExportDicomSeriesAction = {
   seriesInstanceUID?: string; // default: the active viewport's image series
 };
 
+// Surface a backend event as an OHIF toast. The backend enqueues this when a detached
+// segmentation finishes (success or failure) so the user is told even if the chat
+// WebSocket dropped mid-job — the case where the chat spinner froze at "Still
+// segmenting…". Rides this poller (plain HTTP), which is independent of the chat WS.
+type NotifyAction = {
+  type: 'notify';
+  level?: 'success' | 'error' | 'info' | 'warning';
+  title?: string;
+  message: string;
+};
+
 type Action =
   | DrawAnnotationAction
   | SetWindowLevelAction
@@ -126,7 +137,8 @@ type Action =
   | RequestCaptureAction
   | RenderSlicesAction
   | LoadSegmentationAction
-  | ExportDicomSeriesAction;
+  | ExportDicomSeriesAction
+  | NotifyAction;
 
 function _resolveChainlitUrl(): string {
   if (typeof window === 'undefined') return 'http://localhost:8000';
@@ -216,9 +228,36 @@ function dispatch(action: Action) {
       // Ship the loaded series' original DICOM bytes back to the backend.
       void exportDicomSeries(action);
       return;
+    case 'notify':
+      // Out-of-band toast (e.g. a segmentation that finished after the chat WS dropped).
+      showNotify(action);
+      return;
     default:
       console.warn('[askai] unknown action type:', (action as any).type);
   }
+}
+
+// --- notify ----------------------------------------------------------------
+// Show a viewer toast for a backend event via OHIF's uiNotificationService. The
+// backend fires this when a detached segmentation job reaches a terminal state, so
+// the result reaches the user even when the chat WebSocket has dropped (the chat
+// spinner can't be updated then — it freezes at "Still segmenting…").
+function showNotify(action: NotifyAction) {
+  const services = getServicesManager()?.services as any;
+  const uiNotificationService = services?.uiNotificationService;
+  const type = action.level || 'info';
+  if (!uiNotificationService) {
+    console.warn('[askai] notify (service not ready):', action.title, '—', action.message);
+    return;
+  }
+  uiNotificationService.show({
+    title: action.title || 'SaigaLab',
+    message: action.message,
+    type, // 'success' | 'error' | 'info' | 'warning'
+    duration: type === 'error' ? 8000 : 5000,
+    position: 'bottom-right',
+    autoClose: true,
+  });
 }
 
 // --- load_segmentation -----------------------------------------------------
